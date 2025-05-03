@@ -9,14 +9,14 @@ const addressSchema = new mongoose.Schema({
   country: String,
   phoneNumber: String,
   isDefault: { type: Boolean, default: false }
-}, { _id: false });
+}, { _id: true }); // Thêm _id tự động cho mỗi địa chỉ
 
 const userSchema = new mongoose.Schema({
   fullName: { type: String, required: true },
   email: { type: String, required: true, unique: true },
   password: { type: String },
   provider: { type: String, enum: ['local', 'google', 'facebook'], default: 'local' },
-  addresses: [addressSchema],
+  addresses: [addressSchema], // Mảng địa chỉ
   role: { type: String, enum: ['customer', 'admin'], default: 'customer' },
   points: { type: Number, default: 0 },
   resetPasswordToken: String,

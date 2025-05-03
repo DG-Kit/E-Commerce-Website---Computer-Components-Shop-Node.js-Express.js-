@@ -6,17 +6,38 @@ const nodemailer = require('nodemailer');
 
 exports.register = async (req, res) => {
     try {
-        const { fullName, email, password } = req.body;
-        const existing = await User.findOne({ email });
-        if (existing) return res.status(400).json({ msg: 'Email đã được sử dụng' });
+        const { fullName, email, password, role, secretKey } = req.body;
 
-        const hashed = await bcrypt.hash(password, 10);
-        const user = new User({ fullName, email, password: hashed });
-        await user.save();
+        // Kiểm tra nếu email đã tồn tại
+        const existingUser = await User.findOne({ email });
+        if (existingUser) {
+            return res.status(400).json({ msg: 'Email đã được sử dụng' });
+        }
 
-        res.status(201).json({ msg: 'Tạo tài khoản thành công' });
-    } catch (err) {
-        res.status(500).json({ msg: 'Lỗi server', error: err.message });
+        // Mã hóa mật khẩu
+        const hashedPassword = await bcrypt.hash(password, 10);
+
+        // Kiểm tra nếu tạo tài khoản admin
+        let userRole = role || 'customer'; // Mặc định là 'customer'
+        if (role === 'admin') {
+            if (secretKey !== process.env.ADMIN_SECRET_KEY) {
+                return res.status(403).json({ msg: 'Không có quyền tạo tài khoản admin' });
+            }
+        }
+
+        // Tạo user mới
+        const newUser = new User({
+            fullName,
+            email,
+            password: hashedPassword,
+            role: userRole,
+        });
+
+        await newUser.save();
+
+        res.status(201).json({ msg: 'Đăng ký thành công', user: newUser });
+    } catch (error) {
+        res.status(500).json({ msg: 'Lỗi server', error: error.message });
     }
 };
 
@@ -114,4 +135,133 @@ exports.resetPassword = async (req, res) => {
     await user.save();
 
     res.json({ msg: 'Đặt lại mật khẩu thành công' });
+};
+
+exports.updateProfile = async (req, res) => {
+    try {
+        const userId = req.user.id; // Lấy userId từ token
+        const { fullName, phoneNumber, addresses } = req.body;
+
+        // Cập nhật thông tin người dùng
+        const updatedUser = await User.findByIdAndUpdate(
+            userId,
+            { fullName, phoneNumber, addresses },
+            { new: true, runValidators: true }
+        );
+
+        if (!updatedUser) {
+            return res.status(404).json({ msg: 'Người dùng không tồn tại' });
+        }
+
+        res.status(200).json({
+            msg: 'Cập nhật thông tin cá nhân thành công',
+            user: updatedUser,
+        });
+    } catch (error) {
+        res.status(500).json({ msg: 'Lỗi server', error: error.message });
+    }
+};
+
+// Thêm địa chỉ giao hàng
+exports.addAddress = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const newAddress = req.body;
+
+        const user = await User.findById(userId);
+        if (!user) return res.status(404).json({ msg: 'Người dùng không tồn tại' });
+
+        user.addresses.push(newAddress);
+        await user.save();
+
+        res.status(201).json({ msg: 'Thêm địa chỉ thành công', addresses: user.addresses });
+    } catch (error) {
+        res.status(500).json({ msg: 'Lỗi server', error: error.message });
+    }
+};
+
+// Sửa địa chỉ giao hàng
+exports.updateAddress = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { addressId, updatedAddress } = req.body;
+
+        const user = await User.findById(userId);
+        if (!user) return res.status(404).json({ msg: 'Người dùng không tồn tại' });
+
+        const addressIndex = user.addresses.findIndex(addr => addr._id.toString() === addressId);
+        if (addressIndex === -1) return res.status(404).json({ msg: 'Địa chỉ không tồn tại' });
+
+        user.addresses[addressIndex] = { ...user.addresses[addressIndex]._doc, ...updatedAddress };
+        await user.save();
+
+        res.status(200).json({ msg: 'Cập nhật địa chỉ thành công', addresses: user.addresses });
+    } catch (error) {
+        res.status(500).json({ msg: 'Lỗi server', error: error.message });
+    }
+};
+
+// Xóa địa chỉ giao hàng
+exports.deleteAddress = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { addressId } = req.body;
+
+        const user = await User.findById(userId);
+        if (!user) return res.status(404).json({ msg: 'Người dùng không tồn tại' });
+
+        user.addresses = user.addresses.filter(addr => addr._id.toString() !== addressId);
+        await user.save();
+
+        res.status(200).json({ msg: 'Xóa địa chỉ thành công', addresses: user.addresses });
+    } catch (error) {
+        res.status(500).json({ msg: 'Lỗi server', error: error.message });
+    }
+};
+
+// Lấy danh sách người dùng
+exports.getAllUsers = async (req, res) => {
+    try {
+        const users = await User.find().select('-password'); // Không trả về mật khẩu
+        res.status(200).json(users);
+    } catch (error) {
+        res.status(500).json({ msg: 'Lỗi server', error: error.message });
+    }
+};
+
+// Cập nhật thông tin người dùng (dành cho admin)
+exports.updateUserByAdmin = async (req, res) => {
+    try {
+        const { userId, updates } = req.body;
+
+        const updatedUser = await User.findByIdAndUpdate(userId, updates, {
+            new: true,
+            runValidators: true,
+        });
+
+        if (!updatedUser) {
+            return res.status(404).json({ msg: 'Người dùng không tồn tại' });
+        }
+
+        res.status(200).json({ msg: 'Cập nhật người dùng thành công', user: updatedUser });
+    } catch (error) {
+        res.status(500).json({ msg: 'Lỗi server', error: error.message });
+    }
+};
+
+// Xóa người dùng
+exports.deleteUser = async (req, res) => {
+    try {
+        const { userId } = req.body;
+
+        const deletedUser = await User.findByIdAndDelete(userId);
+
+        if (!deletedUser) {
+            return res.status(404).json({ msg: 'Người dùng không tồn tại' });
+        }
+
+        res.status(200).json({ msg: 'Xóa người dùng thành công' });
+    } catch (error) {
+        res.status(500).json({ msg: 'Lỗi server', error: error.message });
+    }
 };

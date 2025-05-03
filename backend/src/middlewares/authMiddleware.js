@@ -12,3 +12,10 @@ exports.verifyToken = (req, res, next) => {
     res.status(401).json({ msg: "Token không hợp lệ" });
   }
 };
+
+exports.verifyAdmin = (req, res, next) => {
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({ msg: 'Truy cập bị từ chối. Chỉ quản trị viên mới được phép.' });
+  }
+  next();
+};
