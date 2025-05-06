@@ -1,4 +1,6 @@
 const Product = require('../models/Product');
+const mongoose = require('mongoose');
+const Category = require('../models/Category');
 
 // Thêm sản phẩm
 exports.addProduct = async (req, res) => {
@@ -11,6 +13,20 @@ exports.addProduct = async (req, res) => {
 
     const totalStock = parsedVariants.reduce((sum, variant) => sum + (variant.stock || 0), 0);
 
+    let categoryDoc;
+
+    // Kiểm tra nếu category là ObjectId hợp lệ
+    if (mongoose.Types.ObjectId.isValid(category)) {
+      categoryDoc = await Category.findById(category);
+    } else {
+      // Nếu không phải ObjectId, tìm danh mục theo tên
+      categoryDoc = await Category.findOne({ name: category });
+    }
+
+    if (!categoryDoc) {
+      return res.status(400).json({ msg: 'Danh mục không tồn tại. Vui lòng tạo danh mục trước.' });
+    }
+
     // Tính giá thấp nhất từ các variants
     const minPrice = parsedVariants.reduce((min, variant) => {
       return variant.price < min ? variant.price : min;
@@ -20,9 +36,9 @@ exports.addProduct = async (req, res) => {
       name,
       description,
       brand,
-      category,
+      category: categoryDoc._id, // Liên kết với danh mục
       stock: totalStock,
-      minPrice: minPrice || 0, // Lưu giá thấp nhất
+      minPrice: minPrice || 0,
       images,
       variants: parsedVariants,
     });
@@ -104,9 +120,9 @@ exports.getProducts = async (req, res) => {
     if (search) filter.name = { $regex: search, $options: 'i' }; // Tìm kiếm theo tên (không phân biệt hoa thường)
     if (category) filter.category = category; // Lọc theo danh mục
     if (minPrice || maxPrice) {
-      filter.price = {};
-      if (minPrice) filter.price.$gte = Number(minPrice); // Giá tối thiểu
-      if (maxPrice) filter.price.$lte = Number(maxPrice); // Giá tối đa
+      filter.minPrice = {};
+      if (minPrice) filter.minPrice.$gte = Number(minPrice); // Giá tối thiểu
+      if (maxPrice) filter.minPrice.$lte = Number(maxPrice); // Giá tối đa
     }
 
     // Tính toán phân trang
@@ -119,8 +135,9 @@ exports.getProducts = async (req, res) => {
       sortOptions[key] = order === 'desc' ? -1 : 1;
     }
 
-    // Lấy danh sách sản phẩm
+    // Lấy danh sách sản phẩm và populate danh mục
     const products = await Product.find(filter)
+      .populate('category', 'name description') // Chỉ lấy các trường `name` và `description` từ Category
       .sort(sortOptions)
       .skip(skip)
       .limit(Number(limit));
@@ -143,7 +160,8 @@ exports.getProductById = async (req, res) => {
   try {
     const { productId } = req.params;
 
-    const product = await Product.findById(productId);
+    // Lấy sản phẩm và populate danh mục
+    const product = await Product.findById(productId).populate('category', 'name description');
     if (!product) {
       return res.status(404).json({ msg: 'Sản phẩm không tồn tại' });
     }

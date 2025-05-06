@@ -4,7 +4,7 @@ const productSchema = new mongoose.Schema({
   name: { type: String, required: true },
   description: { type: String, required: true },
   brand: { type: String, required: true },
-  category: { type: String, required: true },
+  category: { type: mongoose.Schema.Types.ObjectId, ref: 'Category', required: true }, 
   stock: { type: Number, required: true },
   images: [{ type: String }],
   variants: [
@@ -14,7 +14,7 @@ const productSchema = new mongoose.Schema({
       price: { type: Number, required: true },
     },
   ],
-  minPrice: { type: Number, default: 0 }, // Giá thấp nhất của sản phẩm
+  minPrice: { type: Number, default: 0 },
 }, { timestamps: true });
 
 module.exports = mongoose.model('Product', productSchema);
