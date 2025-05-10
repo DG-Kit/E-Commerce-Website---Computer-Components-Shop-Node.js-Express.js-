@@ -3,6 +3,7 @@ const Payment = require('../models/Payment');
 const User = require('../models/User');
 const vnpayService = require('../services/vnpayService');
 const nodemailer = require('nodemailer');
+const mongoose = require('mongoose');
 
 /**
  * Tạo URL thanh toán VNPay
@@ -79,12 +80,18 @@ const createVNPayUrl = async (req, res) => {
  * @returns {Object} Response
  */
 const vnpayReturn = async (req, res) => {
+  // Khởi tạo session với MongoDB để sử dụng transaction
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
   try {
     const vnpParams = req.query;
     
     // Xác thực callback từ VNPay
     const isValidSignature = vnpayService.verifyReturnUrl(vnpParams);
     if (!isValidSignature) {
+      await session.abortTransaction();
+      session.endSession();
       return res.status(400).json({ 
         success: false, 
         message: 'Chữ ký không hợp lệ' 
@@ -95,8 +102,10 @@ const vnpayReturn = async (req, res) => {
     const txnRef = vnpParams.vnp_TxnRef;
     
     // Tìm thông tin thanh toán
-    const payment = await Payment.findOne({ vnpayTxnRef: txnRef });
+    const payment = await Payment.findOne({ vnpayTxnRef: txnRef }).session(session);
     if (!payment) {
+      await session.abortTransaction();
+      session.endSession();
       return res.status(404).json({ 
         success: false, 
         message: 'Không tìm thấy thông tin thanh toán' 
@@ -105,6 +114,8 @@ const vnpayReturn = async (req, res) => {
     
     // Kiểm tra xem thanh toán đã hoàn thành chưa
     if (payment.status === 'COMPLETED') {
+      await session.abortTransaction();
+      session.endSession();
       return res.status(400).json({ 
         success: false, 
         message: 'Thanh toán này đã được xử lý trước đó' 
@@ -120,8 +131,10 @@ const vnpayReturn = async (req, res) => {
     payment.vnpayResponseCode = vnpResponseCode;
     
     // Lấy thông tin đơn hàng
-    const order = await Order.findById(payment.orderId);
+    const order = await Order.findById(payment.orderId).session(session);
     if (!order) {
+      await session.abortTransaction();
+      session.endSession();
       return res.status(404).json({ 
         success: false, 
         message: 'Không tìm thấy thông tin đơn hàng' 
@@ -150,17 +163,32 @@ const vnpayReturn = async (req, res) => {
       // Cập nhật điểm thưởng cho người dùng (10% tổng giá trị đơn hàng)
       const pointsEarned = Math.floor(order.totalAmount * 0.1);
       order.pointsEarned = pointsEarned;
-      await order.save();
+      await order.save({ session });
       
-      // Cập nhật điểm thưởng cho người dùng
-      const user = await User.findById(order.userId);
-      user.loyaltyPoints = (user.loyaltyPoints || 0) + pointsEarned;
-      await user.save();
+      // Cập nhật điểm thưởng cho người dùng vào trường points
+      const user = await User.findById(order.userId).session(session);
+      if (!user) {
+        await session.abortTransaction();
+        session.endSession();
+        return res.status(404).json({
+          success: false,
+          message: 'Không tìm thấy thông tin người dùng'
+        });
+      }
       
-      // Gửi email xác nhận thanh toán
+      // Cộng điểm thưởng vào points của người dùng
+      user.points = (user.points || 0) + pointsEarned;
+      await user.save({ session });
+      
+      // Lưu thông tin thanh toán
+      await payment.save({ session });
+      
+      // Commit transaction
+      await session.commitTransaction();
+      session.endSession();
+      
+      // Gửi email xác nhận thanh toán (không cần đưa vào transaction)
       sendPaymentConfirmationEmail(order, payment);
-      
-      await payment.save();
       
       return res.status(200).json({ 
         success: true, 
@@ -177,7 +205,11 @@ const vnpayReturn = async (req, res) => {
     } else {
       // Thanh toán thất bại
       payment.status = 'FAILED';
-      await payment.save();
+      await payment.save({ session });
+      
+      // Commit transaction
+      await session.commitTransaction();
+      session.endSession();
       
       // Không cập nhật trạng thái của đơn hàng sang CANCELLED để người dùng có thể thử thanh toán lại
       // Nếu muốn hủy đơn sau một số lần thất bại, có thể triển khai thêm logic ở đây
@@ -192,6 +224,10 @@ const vnpayReturn = async (req, res) => {
       });
     }
   } catch (error) {
+    // Nếu có lỗi, hủy bỏ tất cả các thay đổi
+    await session.abortTransaction();
+    session.endSession();
+    
     console.error('Lỗi xử lý callback VNPay:', error);
     return res.status(500).json({ 
       success: false, 

@@ -405,7 +405,7 @@ const updateOrderStatus = async (req, res) => {
       });
     }
 
-    // Nếu đang cập nhật sang CANCELLED, kiểm tra các điều kiện
+    // Xử lý các trường hợp đặc biệt của trạng thái
     if (status === 'CANCELLED') {
       // Nếu đơn hàng đã SHIPPED hoặc DELIVERED, không cho phép hủy
       if (['SHIPPED', 'DELIVERED'].includes(order.status)) {
@@ -459,6 +459,21 @@ const updateOrderStatus = async (req, res) => {
             user.points = (user.points || 0) + order.pointsUsed;
             await user.save({ session });
           }
+        }
+      }
+    } else if (status === 'DELIVERED' && !order.isPaid && order.paymentMethod === 'COD') {
+      // Khi đơn hàng COD được giao thành công, cập nhật trạng thái thanh toán
+      order.isPaid = true;
+      order.paidAt = new Date();
+      
+      // Nếu đơn hàng có điểm thưởng và chưa được cộng vào tài khoản người dùng
+      if (order.pointsEarned > 0) {
+        const user = await User.findById(order.userId).session(session);
+        if (user) {
+          // Cộng điểm thưởng vào tài khoản người dùng
+          user.points = (user.points || 0) + order.pointsEarned;
+          await user.save({ session });
+          console.log(`Đã cộng ${order.pointsEarned} điểm thưởng cho người dùng ${user.email}`);
         }
       }
     }
