@@ -3,6 +3,7 @@ const Cart = require('../models/Cart');
 const User = require('../models/User');
 const Product = require('../models/Product');
 const mongoose = require('mongoose');
+const Coupon = require('../models/Coupon');
 
 /**
  * Tạo đơn hàng mới
@@ -59,33 +60,46 @@ const createOrder = async (req, res) => {
     let subtotal = 0;
     let discountAmount = 0;
     
-    // Nếu tạo đơn hàng từ giỏ hàng
+    // Tạo danh sách cho các items đơn hàng
     const orderItems = [];
-    const updatedProducts = []; // Lưu lại các sản phẩm đã cập nhật để xử lý sau
     
-    if (items.length) {
-      // Kiểm tra tồn kho cho mỗi sản phẩm
-      for (const item of items) {
-        const product = await Product.findById(item.productId).session(session);
-        if (!product) {
-          await session.abortTransaction();
-          session.endSession();
-          return res.status(404).json({
-            success: false,
-            message: `Không tìm thấy sản phẩm với ID: ${item.productId}`
-          });
-        }
-
-        // Tìm variant tương ứng
+    // Sử dụng Map để lưu trữ sản phẩm theo ID, tránh truy vấn nhiều lần cho cùng sản phẩm
+    const productMap = new Map();
+    
+    // Nhóm các item theo productId
+    const productGroups = {};
+    items.forEach(item => {
+      if (!productGroups[item.productId]) {
+        productGroups[item.productId] = [];
+      }
+      productGroups[item.productId].push(item);
+    });
+    
+    // Xử lý từng sản phẩm
+    for (const productId of Object.keys(productGroups)) {
+      // Lấy thông tin sản phẩm, chỉ truy vấn 1 lần cho mỗi sản phẩm
+      const product = await Product.findById(productId).session(session);
+      if (!product) {
+        await session.abortTransaction();
+        session.endSession();
+        return res.status(404).json({
+          success: false,
+          message: `Không tìm thấy sản phẩm với ID: ${productId}`
+        });
+      }
+      
+      // Lưu vào map để xử lý sau
+      productMap.set(productId, product);
+      
+      // Xử lý từng item của sản phẩm này (có thể là nhiều variant khác nhau)
+      for (const item of productGroups[productId]) {
         const variantId = item.variantId;
         let variantName = '';
         let price = 0;
-        let stock = 0;
-        let variantIndex = -1;
-
+        
         if (variantId) {
           // Tìm variant trong mảng variants của sản phẩm
-          variantIndex = product.variants.findIndex(v => v._id.toString() === variantId);
+          const variantIndex = product.variants.findIndex(v => v._id.toString() === variantId);
           if (variantIndex === -1) {
             await session.abortTransaction();
             session.endSession();
@@ -129,14 +143,6 @@ const createOrder = async (req, res) => {
         const itemTotal = price * item.quantity;
         subtotal += itemTotal;
 
-        // Cập nhật lại tổng stock từ các variants
-        if (product.variants && product.variants.length > 0) {
-          product.stock = product.variants.reduce((sum, variant) => sum + variant.stock, 0);
-        }
-
-        // Lưu lại sản phẩm để cập nhật
-        updatedProducts.push(product);
-
         // Thêm vào danh sách sản phẩm trong đơn hàng
         orderItems.push({
           productId: product._id,
@@ -147,13 +153,27 @@ const createOrder = async (req, res) => {
           image: product.images && product.images.length > 0 ? product.images[0] : ''
         });
       }
+      
+      // Cập nhật lại tổng stock từ các variants sau khi xử lý tất cả các item của sản phẩm này
+      if (product.variants && product.variants.length > 0) {
+        product.stock = product.variants.reduce((sum, variant) => sum + variant.stock, 0);
+      }
     }
 
     // Xử lý mã giảm giá nếu có
     if (discountCode) {
-      // TODO: Thêm logic xử lý mã giảm giá ở đây
-      // Ví dụ: Tìm mã giảm giá trong database, kiểm tra hạn sử dụng và tính số tiền giảm
-      // discountAmount = ...
+      try {
+        // Áp dụng mã giảm giá
+        const couponResult = await applyCoupon(discountCode, subtotal, null, userId, session);
+        discountAmount = couponResult.discountAmount;
+      } catch (error) {
+        await session.abortTransaction();
+        session.endSession();
+        return res.status(400).json({
+          success: false,
+          message: error.message || 'Mã giảm giá không hợp lệ'
+        });
+      }
     }
 
     // Xử lý điểm tích lũy nếu có
@@ -227,8 +247,19 @@ const createOrder = async (req, res) => {
     // Lưu đơn hàng
     const savedOrder = await newOrder.save({ session });
     
+    // Nếu có áp dụng mã giảm giá và chưa cập nhật orderId
+    if (discountCode && savedOrder) {
+      try {
+        // Cập nhật lại orderId trong mã giảm giá
+        await updateCouponUsage(discountCode, savedOrder._id, userId, session);
+      } catch (error) {
+        console.error('Lỗi cập nhật mã giảm giá:', error);
+        // Không cần abort transaction, chỉ log lỗi
+      }
+    }
+    
     // Lưu các sản phẩm đã cập nhật
-    for (const product of updatedProducts) {
+    for (const product of productMap.values()) {
       await product.save({ session });
     }
     
@@ -592,10 +623,115 @@ const getAllOrders = async (req, res) => {
   }
 };
 
+/**
+ * Hàm cập nhật thông tin sử dụng mã giảm giá sau khi đã tạo đơn hàng
+ * @param {String} code Mã giảm giá
+ * @param {String} orderId ID đơn hàng
+ * @param {String} userId ID người dùng
+ * @param {Object} session MongoDB session
+ */
+const updateCouponUsage = async (code, orderId, userId, session) => {
+  try {
+    // Tìm mã giảm giá
+    const coupon = await Coupon.findOne({ code: code.toUpperCase() }).session(session);
+    if (!coupon) {
+      throw new Error('Mã giảm giá không tồn tại');
+    }
+    
+    // Tìm record đã sử dụng gần nhất (chưa có orderId)
+    const usage = coupon.usedBy.find(
+      u => u.userId.toString() === userId.toString() && !u.orderId
+    );
+    
+    if (usage) {
+      // Cập nhật thông tin orderId
+      usage.orderId = orderId;
+    } else {
+      // Trường hợp không tìm thấy record, thêm mới
+      coupon.usedBy.push({
+        orderId,
+        userId,
+        usedAt: new Date()
+      });
+      coupon.currentUses += 1;
+    }
+    
+    await coupon.save({ session });
+    return true;
+  } catch (error) {
+    console.error('Lỗi cập nhật thông tin sử dụng mã giảm giá:', error);
+    throw error;
+  }
+};
+
+// Sửa lại chỉ import và sử dụng applyCoupon riêng thay vì import cả controller
+const applyCoupon = async (code, amount, orderId, userId, session = null) => {
+  try {
+    // Tạo query cơ bản
+    let query = Coupon.findOne({ code: code.toUpperCase() });
+    
+    // Thêm session nếu có
+    if (session) {
+      query = query.session(session);
+    }
+    
+    // Tìm mã giảm giá
+    const coupon = await query;
+    if (!coupon) {
+      throw new Error('Mã giảm giá không tồn tại');
+    }
+    
+    // Kiểm tra tính hợp lệ
+    if (!coupon.isValid()) {
+      throw new Error('Mã giảm giá đã hết hiệu lực hoặc đã sử dụng hết số lần cho phép');
+    }
+    
+    // Tính toán số tiền giảm
+    const discountAmount = coupon.calculateDiscount(amount);
+    
+    // Nếu có orderId, cập nhật thông tin sử dụng
+    if (orderId) {
+      coupon.currentUses += 1;
+      coupon.usedBy.push({
+        orderId,
+        userId,
+        usedAt: new Date()
+      });
+      
+      // Lưu với session nếu có
+      if (session) {
+        await coupon.save({ session });
+      } else {
+        await coupon.save();
+      }
+    } else {
+      // Nếu chưa có orderId (đang tạo đơn hàng), tạm thời lưu userId để cập nhật sau
+      // Trong trường hợp này không tăng currentUses vì sẽ được tăng sau khi tạo đơn hàng
+      if (!session) {
+        // Chỉ lưu nếu không có session, nếu có session sẽ được cập nhật sau bằng updateCouponUsage
+        coupon.usedBy.push({
+          userId,
+          usedAt: new Date()
+        });
+        await coupon.save();
+      }
+    }
+    
+    return {
+      code: coupon.code,
+      discountAmount
+    };
+  } catch (error) {
+    throw error;
+  }
+};
+
 module.exports = {
   createOrder,
   getUserOrders,
   getOrderDetails,
   updateOrderStatus,
-  getAllOrders
+  getAllOrders,
+  applyCoupon,
+  updateCouponUsage
 }; 

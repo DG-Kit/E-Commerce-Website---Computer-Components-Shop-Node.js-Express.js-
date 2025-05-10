@@ -284,6 +284,7 @@ const sendPaymentConfirmationEmail = async (order, payment) => {
         <table border="1" cellpadding="5" style="border-collapse: collapse;">
           <tr>
             <th>Sản phẩm</th>
+            <th>Phân loại</th>
             <th>Số lượng</th>
             <th>Đơn giá</th>
             <th>Thành tiền</th>
@@ -291,12 +292,40 @@ const sendPaymentConfirmationEmail = async (order, payment) => {
           ${order.items.map(item => `
             <tr>
               <td>${item.name}</td>
+              <td>${item.variant ? item.variant : 'Mặc định'}</td>
               <td>${item.quantity}</td>
               <td>${item.price.toLocaleString('vi-VN')} VNĐ</td>
               <td>${(item.price * item.quantity).toLocaleString('vi-VN')} VNĐ</td>
             </tr>
           `).join('')}
         </table>
+        
+        <h2>Chi tiết thanh toán</h2>
+        <table border="1" cellpadding="5" style="border-collapse: collapse; margin-top: 20px; width: 100%; max-width: 500px;">
+          <tr>
+            <td><strong>Tổng giá sản phẩm:</strong></td>
+            <td style="text-align: right">${order.subtotal.toLocaleString('vi-VN')} VNĐ</td>
+          </tr>
+          ${order.pointsUsed > 0 ? `
+          <tr>
+            <td><strong>Giảm giá từ điểm tích lũy (${order.pointsUsed} điểm):</strong></td>
+            <td style="text-align: right; color: #e74c3c">-${(order.pointsUsed * 1000).toLocaleString('vi-VN')} VNĐ</td>
+          </tr>` : ''}
+          ${order.discountCode ? `
+          <tr>
+            <td><strong>Giảm giá từ mã "${order.discountCode}":</strong></td>
+            <td style="text-align: right; color: #e74c3c">-${(order.discountAmount - (order.pointsUsed * 1000)).toLocaleString('vi-VN')} VNĐ</td>
+          </tr>` : ''}
+          <tr>
+            <td><strong>Phí vận chuyển:</strong></td>
+            <td style="text-align: right">${order.shippingFee.toLocaleString('vi-VN')} VNĐ</td>
+          </tr>
+          <tr style="font-size: 1.2em; font-weight: bold; background-color: #f8f9fa;">
+            <td><strong>Tổng thanh toán:</strong></td>
+            <td style="text-align: right">${order.totalAmount.toLocaleString('vi-VN')} VNĐ</td>
+          </tr>
+        </table>
+        
         <p>Cảm ơn bạn đã tin tưởng và sử dụng dịch vụ của chúng tôi!</p>
       `
     };
