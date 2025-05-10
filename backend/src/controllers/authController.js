@@ -253,15 +253,43 @@ exports.updateUserByAdmin = async (req, res) => {
 exports.deleteUser = async (req, res) => {
     try {
         const { userId } = req.body;
-
-        const deletedUser = await User.findByIdAndDelete(userId);
-
-        if (!deletedUser) {
-            return res.status(404).json({ msg: 'Người dùng không tồn tại' });
-        }
-
+        await User.findByIdAndDelete(userId);
         res.status(200).json({ msg: 'Xóa người dùng thành công' });
     } catch (error) {
+        res.status(500).json({ msg: 'Lỗi server', error: error.message });
+    }
+};
+
+// Thêm controller logout
+// Trong JWT, chúng ta cần lưu token đã đăng xuất vào blacklist
+// để ngăn chặn việc sử dụng token đó sau khi đăng xuất
+// Blacklist có thể lưu trong Redis, hoặc MongoDB cho đơn giản
+exports.logout = async (req, res) => {
+    try {
+        const token = req.headers.authorization?.split(" ")[1];
+        if (!token) {
+            return res.status(400).json({ msg: 'Không có token' });
+        }
+
+        // Giải mã token để lấy thời gian hết hạn
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        const expiryTime = decoded.exp;
+        
+        // Lưu token vào blacklist
+        // Trong ví dụ này, chúng ta tạo một model mới để lưu token đã vô hiệu hóa
+        // Nhưng bạn có thể sử dụng Redis cho giải pháp tốt hơn về hiệu suất
+        const BlacklistedToken = require('../models/BlacklistedToken');
+        await new BlacklistedToken({
+            token,
+            expiresAt: new Date(expiryTime * 1000) // Convert timestamp to Date
+        }).save();
+
+        res.status(200).json({ msg: 'Đăng xuất thành công' });
+    } catch (error) {
+        // Nếu token không hợp lệ, vẫn coi như đã đăng xuất thành công
+        if (error.name === 'JsonWebTokenError') {
+            return res.status(200).json({ msg: 'Đăng xuất thành công' });
+        }
         res.status(500).json({ msg: 'Lỗi server', error: error.message });
     }
 };

@@ -9,6 +9,9 @@ router.post('/register', authCtrl.register);
 // Đăng nhập tài khoản
 router.post('/login', authCtrl.login);
 
+// Đăng xuất tài khoản
+router.post('/logout', verifyToken, authCtrl.logout);
+
 // Xem Profile người dùng
 router.get('/me', verifyToken, authCtrl.getProfile);
 

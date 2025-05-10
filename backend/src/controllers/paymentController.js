@@ -29,7 +29,12 @@ const createVNPayUrl = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Đơn hàng này đã được thanh toán' });
     }
     
-    // Tạo URL thanh toán VNPay
+    // Kiểm tra xem đơn hàng có thuộc về người dùng hiện tại không
+    if (order.userId.toString() !== req.user.id.toString()) {
+      return res.status(403).json({ success: false, message: 'Không có quyền truy cập đơn hàng này' });
+    }
+    
+    // Tạo URL thanh toán VNPay với số tiền từ đơn hàng
     const payload = {
       orderId: orderId,
       amount: order.totalAmount,
@@ -86,16 +91,6 @@ const vnpayReturn = async (req, res) => {
       });
     }
     
-    // Kiểm tra mã response từ VNPay
-    const vnpResponseCode = vnpParams.vnp_ResponseCode;
-    if (vnpResponseCode !== '00') {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Thanh toán không thành công', 
-        data: vnpParams 
-      });
-    }
-    
     // Lấy mã tham chiếu giao dịch
     const txnRef = vnpParams.vnp_TxnRef;
     
@@ -116,44 +111,86 @@ const vnpayReturn = async (req, res) => {
       });
     }
     
+    // Kiểm tra mã response từ VNPay
+    const vnpResponseCode = vnpParams.vnp_ResponseCode;
+    
     // Cập nhật thông tin thanh toán
     payment.vnpayTransactionNo = vnpParams.vnp_TransactionNo;
     payment.vnpayBankCode = vnpParams.vnp_BankCode;
     payment.vnpayResponseCode = vnpResponseCode;
-    payment.status = 'COMPLETED';
-    payment.paymentDate = new Date();
-    await payment.save();
     
-    // Cập nhật đơn hàng
+    // Lấy thông tin đơn hàng
     const order = await Order.findById(payment.orderId);
-    order.isPaid = true;
-    order.paidAt = new Date();
+    if (!order) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Không tìm thấy thông tin đơn hàng' 
+      });
+    }
     
-    // Cập nhật điểm thưởng cho người dùng (10% tổng giá trị đơn hàng)
-    const pointsEarned = Math.floor(order.totalAmount * 0.1);
-    order.pointsEarned = pointsEarned;
-    await order.save();
-    
-    // Cập nhật điểm thưởng cho người dùng
-    const user = await User.findById(order.userId);
-    user.loyaltyPoints = (user.loyaltyPoints || 0) + pointsEarned;
-    await user.save();
-    
-    // Gửi email xác nhận thanh toán
-    sendPaymentConfirmationEmail(order, payment);
-    
-    return res.status(200).json({ 
-      success: true, 
-      message: 'Thanh toán thành công', 
-      data: {
-        orderId: order._id,
-        transactionId: payment._id,
-        amount: payment.amount,
-        paymentDate: payment.paymentDate,
-        paymentMethod: payment.paymentMethod,
-        pointsEarned
+    if (vnpResponseCode === '00') {
+      // Thanh toán thành công
+      payment.status = 'COMPLETED';
+      payment.paymentDate = new Date();
+      
+      // Cập nhật đơn hàng
+      order.isPaid = true;
+      order.paidAt = new Date();
+      
+      // Cập nhật trạng thái đơn hàng từ PENDING sang PROCESSING
+      if (order.status === 'PENDING') {
+        order.status = 'PROCESSING';
+        // Thêm vào lịch sử trạng thái
+        order.statusHistory.push({
+          status: 'PROCESSING',
+          updatedAt: new Date()
+        });
       }
-    });
+      
+      // Cập nhật điểm thưởng cho người dùng (10% tổng giá trị đơn hàng)
+      const pointsEarned = Math.floor(order.totalAmount * 0.1);
+      order.pointsEarned = pointsEarned;
+      await order.save();
+      
+      // Cập nhật điểm thưởng cho người dùng
+      const user = await User.findById(order.userId);
+      user.loyaltyPoints = (user.loyaltyPoints || 0) + pointsEarned;
+      await user.save();
+      
+      // Gửi email xác nhận thanh toán
+      sendPaymentConfirmationEmail(order, payment);
+      
+      await payment.save();
+      
+      return res.status(200).json({ 
+        success: true, 
+        message: 'Thanh toán thành công', 
+        data: {
+          orderId: order._id,
+          transactionId: payment._id,
+          amount: payment.amount,
+          paymentDate: payment.paymentDate,
+          paymentMethod: payment.paymentMethod,
+          pointsEarned
+        }
+      });
+    } else {
+      // Thanh toán thất bại
+      payment.status = 'FAILED';
+      await payment.save();
+      
+      // Không cập nhật trạng thái của đơn hàng sang CANCELLED để người dùng có thể thử thanh toán lại
+      // Nếu muốn hủy đơn sau một số lần thất bại, có thể triển khai thêm logic ở đây
+      
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Thanh toán không thành công, vui lòng thử lại hoặc chọn phương thức thanh toán khác', 
+        data: {
+          orderId: order._id,
+          responseCode: vnpResponseCode
+        } 
+      });
+    }
   } catch (error) {
     console.error('Lỗi xử lý callback VNPay:', error);
     return res.status(500).json({ 

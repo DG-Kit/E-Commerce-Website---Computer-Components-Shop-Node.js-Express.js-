@@ -2,6 +2,7 @@ const Order = require('../models/Order');
 const Cart = require('../models/Cart');
 const User = require('../models/User');
 const Product = require('../models/Product');
+const mongoose = require('mongoose');
 
 /**
  * Tạo đơn hàng mới
@@ -10,6 +11,10 @@ const Product = require('../models/Product');
  * @returns {Object} Response
  */
 const createOrder = async (req, res) => {
+  // Khởi tạo session với MongoDB để sử dụng transaction
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
   try {
     // Thêm log để debug
     console.log('Authorization header:', req.headers.authorization);
@@ -31,11 +36,8 @@ const createOrder = async (req, res) => {
       shippingAddress,
       paymentMethod,
       discountCode,
-      discountAmount,
       pointsUsed,
-      subtotal,
-      shippingFee,
-      totalAmount
+      shippingFee = 0
     } = req.body;
 
     // Kiểm tra thông tin cần thiết
@@ -53,14 +55,21 @@ const createOrder = async (req, res) => {
       });
     }
 
+    // Khởi tạo biến tính toán giá trị đơn hàng
+    let subtotal = 0;
+    let discountAmount = 0;
+    
     // Nếu tạo đơn hàng từ giỏ hàng
     const orderItems = [];
+    const updatedProducts = []; // Lưu lại các sản phẩm đã cập nhật để xử lý sau
     
     if (items.length) {
       // Kiểm tra tồn kho cho mỗi sản phẩm
       for (const item of items) {
-        const product = await Product.findById(item.productId);
+        const product = await Product.findById(item.productId).session(session);
         if (!product) {
+          await session.abortTransaction();
+          session.endSession();
           return res.status(404).json({
             success: false,
             message: `Không tìm thấy sản phẩm với ID: ${item.productId}`
@@ -72,18 +81,24 @@ const createOrder = async (req, res) => {
         let variantName = '';
         let price = 0;
         let stock = 0;
+        let variantIndex = -1;
 
         if (variantId) {
           // Tìm variant trong mảng variants của sản phẩm
-          const variant = product.variants.find(v => v._id.toString() === variantId);
-          if (!variant) {
+          variantIndex = product.variants.findIndex(v => v._id.toString() === variantId);
+          if (variantIndex === -1) {
+            await session.abortTransaction();
+            session.endSession();
             return res.status(404).json({
               success: false,
               message: `Không tìm thấy biến thể với ID: ${variantId} cho sản phẩm: ${product.name}`
             });
           }
 
+          const variant = product.variants[variantIndex];
           if (variant.stock < item.quantity) {
+            await session.abortTransaction();
+            session.endSession();
             return res.status(400).json({
               success: false,
               message: `Biến thể "${variant.name}" của sản phẩm "${product.name}" chỉ còn ${variant.stock} trong kho, không đủ số lượng yêu cầu`
@@ -91,13 +106,14 @@ const createOrder = async (req, res) => {
           }
 
           // Giảm số lượng trong kho của variant
-          variant.stock -= item.quantity;
+          product.variants[variantIndex].stock -= item.quantity;
           variantName = variant.name;
           price = variant.price;
-          stock = variant.stock;
         } else {
           // Nếu không có variant, sử dụng thông tin từ sản phẩm chính
           if (product.stock < item.quantity) {
+            await session.abortTransaction();
+            session.endSession();
             return res.status(400).json({
               success: false,
               message: `Sản phẩm "${product.name}" chỉ còn ${product.stock} trong kho, không đủ số lượng yêu cầu`
@@ -107,11 +123,19 @@ const createOrder = async (req, res) => {
           // Giảm số lượng trong kho của sản phẩm chính
           product.stock -= item.quantity;
           price = product.price || product.minPrice;
-          stock = product.stock;
         }
 
-        // Lưu thay đổi vào cơ sở dữ liệu
-        await product.save();
+        // Tính tổng giá trị sản phẩm và cộng vào subtotal
+        const itemTotal = price * item.quantity;
+        subtotal += itemTotal;
+
+        // Cập nhật lại tổng stock từ các variants
+        if (product.variants && product.variants.length > 0) {
+          product.stock = product.variants.reduce((sum, variant) => sum + variant.stock, 0);
+        }
+
+        // Lưu lại sản phẩm để cập nhật
+        updatedProducts.push(product);
 
         // Thêm vào danh sách sản phẩm trong đơn hàng
         orderItems.push({
@@ -125,11 +149,51 @@ const createOrder = async (req, res) => {
       }
     }
 
+    // Xử lý mã giảm giá nếu có
+    if (discountCode) {
+      // TODO: Thêm logic xử lý mã giảm giá ở đây
+      // Ví dụ: Tìm mã giảm giá trong database, kiểm tra hạn sử dụng và tính số tiền giảm
+      // discountAmount = ...
+    }
+
+    // Xử lý điểm tích lũy nếu có
+    let pointsDiscount = 0;
+    if (pointsUsed && pointsUsed > 0) {
+      // Kiểm tra xem người dùng có đủ điểm không
+      const user = await User.findById(userId).session(session);
+      if (!user || user.points < pointsUsed) {
+        await session.abortTransaction();
+        session.endSession();
+        return res.status(400).json({
+          success: false,
+          message: 'Không đủ điểm tích lũy'
+        });
+      }
+      
+      // Quy đổi điểm thành tiền (giả sử 1 điểm = 1000 VND)
+      pointsDiscount = pointsUsed * 1000;
+      
+      // Đảm bảo số tiền giảm không vượt quá tổng giá trị đơn hàng
+      if (pointsDiscount > subtotal) {
+        pointsDiscount = subtotal;
+        // Điều chỉnh lại số điểm sử dụng
+        pointsUsed = Math.floor(subtotal / 1000);
+      }
+    }
+    
+    // Tính tổng giảm giá
+    discountAmount = discountAmount + pointsDiscount;
+    
+    // Tính tổng số tiền đơn hàng
+    const totalAmount = subtotal + shippingFee - discountAmount;
+
     // Tính toán điểm thưởng (10% tổng đơn hàng)
     const pointsEarned = Math.floor(totalAmount * 0.1);
 
     // Đảm bảo userId là một giá trị hợp lệ
     if (!userId) {
+      await session.abortTransaction();
+      session.endSession();
       return res.status(400).json({
         success: false,
         message: 'Không có thông tin người dùng'
@@ -159,20 +223,38 @@ const createOrder = async (req, res) => {
     });
 
     console.log('Đơn hàng trước khi lưu:', JSON.stringify(newOrder));
-    const savedOrder = await newOrder.save();
+    
+    // Lưu đơn hàng
+    const savedOrder = await newOrder.save({ session });
+    
+    // Lưu các sản phẩm đã cập nhật
+    for (const product of updatedProducts) {
+      await product.save({ session });
+    }
+    
     console.log('Đơn hàng sau khi lưu:', JSON.stringify(savedOrder));
+
+    // Nếu thanh toán là COD, cập nhật trạng thái đơn hàng thành PROCESSING
+    if (paymentMethod === 'COD') {
+      savedOrder.status = 'PROCESSING';
+      savedOrder.statusHistory.push({
+        status: 'PROCESSING',
+        updatedAt: new Date()
+      });
+      await savedOrder.save({ session });
+    }
 
     // Nếu người dùng sử dụng điểm thưởng, cập nhật lại điểm thưởng của người dùng
     if (pointsUsed && pointsUsed > 0) {
-      const user = await User.findById(userId);
+      const user = await User.findById(userId).session(session);
       if (user) {
         user.points = Math.max(0, (user.points || 0) - pointsUsed);
-        await user.save();
+        await user.save({ session });
       }
     }
 
     // Xóa sản phẩm khỏi giỏ hàng
-    const userCart = await Cart.findOne({ user: userId });
+    const userCart = await Cart.findOne({ user: userId }).session(session);
     if (userCart) {
       // Lọc các sản phẩm trong giỏ hàng
       // Chúng ta cần xem xét cả productId và variantId
@@ -186,8 +268,12 @@ const createOrder = async (req, res) => {
         return !isInOrder;
       });
       
-      await userCart.save();
+      await userCart.save({ session });
     }
+
+    // Commit transaction
+    await session.commitTransaction();
+    session.endSession();
 
     return res.status(201).json({
       success: true,
@@ -195,6 +281,10 @@ const createOrder = async (req, res) => {
       data: savedOrder
     });
   } catch (error) {
+    // Nếu có lỗi, hủy bỏ tất cả các thay đổi
+    await session.abortTransaction();
+    session.endSession();
+    
     console.error('Lỗi tạo đơn hàng:', error);
     return res.status(500).json({
       success: false,
@@ -278,6 +368,10 @@ const getOrderDetails = async (req, res) => {
  * @returns {Object} Response
  */
 const updateOrderStatus = async (req, res) => {
+  // Khởi tạo session với MongoDB để sử dụng transaction
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
   try {
     const { orderId } = req.params;
     const { status } = req.body;
@@ -291,12 +385,82 @@ const updateOrderStatus = async (req, res) => {
       });
     }
 
-    const order = await Order.findById(orderId);
+    const order = await Order.findById(orderId).session(session);
     if (!order) {
+      await session.abortTransaction();
+      session.endSession();
       return res.status(404).json({
         success: false,
         message: 'Không tìm thấy đơn hàng'
       });
+    }
+
+    // Nếu đơn hàng đã bị hủy, không cho phép cập nhật trạng thái
+    if (order.status === 'CANCELLED') {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(400).json({
+        success: false,
+        message: 'Không thể cập nhật trạng thái cho đơn hàng đã bị hủy'
+      });
+    }
+
+    // Nếu đang cập nhật sang CANCELLED, kiểm tra các điều kiện
+    if (status === 'CANCELLED') {
+      // Nếu đơn hàng đã SHIPPED hoặc DELIVERED, không cho phép hủy
+      if (['SHIPPED', 'DELIVERED'].includes(order.status)) {
+        await session.abortTransaction();
+        session.endSession();
+        return res.status(400).json({
+          success: false,
+          message: 'Không thể hủy đơn hàng đã được giao hoặc đang vận chuyển'
+        });
+      }
+
+      // Trả lại số lượng sản phẩm vào kho
+      for (const item of order.items) {
+        const product = await Product.findById(item.productId).session(session);
+        if (product) {
+          // Nếu là variant
+          if (item.variant) {
+            // Tìm variant tương ứng
+            const variantIndex = product.variants.findIndex(v => v.name === item.variant);
+            if (variantIndex !== -1) {
+              // Cộng lại số lượng
+              product.variants[variantIndex].stock += item.quantity;
+            } else {
+              // Nếu không tìm thấy variant (hiếm khi xảy ra), cộng vào stock chính
+              product.stock += item.quantity;
+            }
+          } else {
+            // Nếu không phải variant, cộng vào stock chính
+            product.stock += item.quantity;
+          }
+
+          // Cập nhật lại tổng stock từ các variants
+          if (product.variants && product.variants.length > 0) {
+            product.stock = product.variants.reduce((sum, variant) => sum + variant.stock, 0);
+          }
+
+          await product.save({ session });
+        }
+      }
+
+      // Nếu đơn hàng đã thanh toán, cần xử lý hoàn tiền
+      if (order.isPaid) {
+        // TODO: Xử lý hoàn tiền cho khách hàng 
+        // (có thể thêm logic hoàn tiền ở đây hoặc ghi lại để xử lý thủ công)
+        console.log(`Cần hoàn tiền cho đơn hàng ${orderId} - Số tiền: ${order.totalAmount}`);
+        
+        // Hoàn lại điểm tích lũy đã sử dụng (nếu có)
+        if (order.pointsUsed > 0) {
+          const user = await User.findById(order.userId).session(session);
+          if (user) {
+            user.points = (user.points || 0) + order.pointsUsed;
+            await user.save({ session });
+          }
+        }
+      }
     }
 
     // Cập nhật trạng thái
@@ -309,7 +473,11 @@ const updateOrderStatus = async (req, res) => {
     });
 
     // Lưu lại
-    await order.save();
+    await order.save({ session });
+
+    // Commit transaction
+    await session.commitTransaction();
+    session.endSession();
 
     return res.status(200).json({
       success: true,
@@ -317,6 +485,10 @@ const updateOrderStatus = async (req, res) => {
       data: order
     });
   } catch (error) {
+    // Nếu có lỗi, hủy bỏ tất cả các thay đổi
+    await session.abortTransaction();
+    session.endSession();
+    
     console.error('Lỗi cập nhật trạng thái đơn hàng:', error);
     return res.status(500).json({
       success: false,

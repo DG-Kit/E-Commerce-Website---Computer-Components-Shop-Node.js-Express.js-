@@ -68,7 +68,6 @@ const orderSchema = new mongoose.Schema({
   },
   subtotal: {
     type: Number,
-    required: true
   },
   shippingFee: {
     type: Number,
@@ -76,7 +75,6 @@ const orderSchema = new mongoose.Schema({
   },
   totalAmount: {
     type: Number,
-    required: true
   },
   status: {
     type: String,
