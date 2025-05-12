@@ -5,21 +5,21 @@ const Category = require('../models/Category');
 // Thêm sản phẩm
 exports.addProduct = async (req, res) => {
   try {
-    const { name, description, brand, category, variants } = req.body;
+    const { name, description, category, variants } = req.body;
 
     const images = req.files.map(file => file.path);
-
+    
+    // Parse variants với discountPercentage
     const parsedVariants = variants ? JSON.parse(variants) : [];
-
+    
+    // Tính stock tổng hợp từ variants
     const totalStock = parsedVariants.reduce((sum, variant) => sum + (variant.stock || 0), 0);
 
+    // Xử lý category
     let categoryDoc;
-
-    // Kiểm tra nếu category là ObjectId hợp lệ
     if (mongoose.Types.ObjectId.isValid(category)) {
       categoryDoc = await Category.findById(category);
     } else {
-      // Nếu không phải ObjectId, tìm danh mục theo tên
       categoryDoc = await Category.findOne({ name: category });
     }
 
@@ -27,20 +27,24 @@ exports.addProduct = async (req, res) => {
       return res.status(400).json({ msg: 'Danh mục không tồn tại. Vui lòng tạo danh mục trước.' });
     }
 
-    // Tính giá thấp nhất từ các variants
+    // Tìm giá thấp nhất từ các variants
     const minPrice = parsedVariants.reduce((min, variant) => {
       return variant.price < min ? variant.price : min;
     }, Infinity);
+    
+    // Tìm % giảm giá trung bình (hoặc bạn có thể chọn cách khác để tính)
+    const avgDiscountPercentage = parsedVariants.reduce((sum, variant) => 
+      sum + (variant.discountPercentage || 0), 0) / parsedVariants.length || 0;
 
     const newProduct = new Product({
       name,
       description,
-      brand,
-      category: categoryDoc._id, // Liên kết với danh mục
+      category: categoryDoc._id,
       stock: totalStock,
       minPrice: minPrice || 0,
       images,
       variants: parsedVariants,
+      discountPercentage: avgDiscountPercentage, // Thêm phần trăm giảm giá tổng thể
     });
 
     await newProduct.save();
@@ -119,10 +123,32 @@ exports.getProducts = async (req, res) => {
     const filter = {};
     if (search) filter.name = { $regex: search, $options: 'i' }; // Tìm kiếm theo tên (không phân biệt hoa thường)
     if (category) filter.category = category; // Lọc theo danh mục
+    
+    // Cải thiện lọc giá để check cả giá variants và minPrice
     if (minPrice || maxPrice) {
-      filter.minPrice = {};
-      if (minPrice) filter.minPrice.$gte = Number(minPrice); // Giá tối thiểu
-      if (maxPrice) filter.minPrice.$lte = Number(maxPrice); // Giá tối đa
+      // Dùng $or để check cả minPrice và variant.price
+      const priceFilters = [];
+      
+      // Điều kiện cho minPrice
+      if (minPrice && maxPrice) {
+        priceFilters.push({ minPrice: { $gte: Number(minPrice), $lte: Number(maxPrice) } });
+      } else if (minPrice) {
+        priceFilters.push({ minPrice: { $gte: Number(minPrice) } });
+      } else if (maxPrice) {
+        priceFilters.push({ minPrice: { $lte: Number(maxPrice) } });
+      }
+      
+      // Điều kiện cho variant price
+      if (minPrice && maxPrice) {
+        priceFilters.push({ 'variants.price': { $gte: Number(minPrice), $lte: Number(maxPrice) } });
+      } else if (minPrice) {
+        priceFilters.push({ 'variants.price': { $gte: Number(minPrice) } });
+      } else if (maxPrice) {
+        priceFilters.push({ 'variants.price': { $lte: Number(maxPrice) } });
+      }
+      
+      // Thêm điều kiện $or vào filter
+      filter.$or = priceFilters;
     }
 
     // Tính toán phân trang
