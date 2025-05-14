@@ -55,9 +55,9 @@ const Footer = () => {
             <FooterSection>
               <Box sx={{ mb: 2 }}>
                 <img
-                  src="/placeholder.svg?height=60&width=180"
-                  alt="TTESHOP Logo"
-                  style={{ height: '48px', width: 'auto' }}
+                  src="/images/logo-transparent.png"
+                  alt="K-Store Logo"
+                  style={{ height: '120px', width: '120px' }}
                 />
               </Box>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -187,7 +187,7 @@ const Footer = () => {
 
         <Box sx={{ textAlign: 'center' }}>
           <Typography variant="body2" color="text.secondary">
-            © {new Date().getFullYear()} TTESHOP. Tất cả các quyền được bảo lưu.
+            © {new Date().getFullYear()} K-Store. Tất cả các quyền được bảo lưu.
           </Typography>
         </Box>
       </Container>

@@ -50,6 +50,41 @@ export const authApi = {
   
   // Get current user
   getCurrentUser: () => api.get('/auth/me'),
+  
+  // Forgot password - request reset
+  forgotPassword: (email) => api.post('/auth/forgot-password', { email }),
+  
+  // Reset password with token
+  resetPassword: (token, newPassword) => api.post('/auth/reset-password', { token, newPassword }),
+  
+  // Change password (for logged-in users)
+  changePassword: (data) => api.put('/auth/change-password', data),
+};
+
+// User Address API
+export const addressApi = {
+  // Get all addresses for current user
+  getAddresses: () => api.get('/auth/me'),
+  
+  // Add a new address
+  addAddress: (data) => api.post('/auth/add-address', data),
+  
+  // Update an existing address
+  updateAddress: (addressId, data) => api.put('/auth/update-address', { 
+    addressId, 
+    ...data 
+  }),
+  
+  // Delete an address
+  deleteAddress: (addressId) => api.delete('/auth/delete-address', { 
+    data: { addressId } 
+  }),
+  
+  // Set address as default
+  setDefaultAddress: (addressId) => api.put('/auth/update-address', { 
+    addressId, 
+    isDefault: true 
+  }),
 };
 
 // Cart API

@@ -16,7 +16,9 @@ import {
   Skeleton,
   Alert,
   Tabs,
-  Tab 
+  Tab,
+  useMediaQuery,
+  useTheme
 } from '@mui/material';
 import { 
   ShoppingCart as CartIcon,
@@ -43,6 +45,8 @@ const calculateDiscount = (originalPrice, currentPrice) => {
 const ProductDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   
   // State
   const [product, setProduct] = useState(null);
@@ -231,9 +235,16 @@ const ProductDetail = () => {
   
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
-      <Grid container spacing={4}>
+      {/* Force Grid container to maintain columns on all viewports */}
+      <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, width: '100%' }}>
         {/* Left column - Image carousel */}
-        <Grid item xs={12} md={6}>
+        <Box 
+          sx={{ 
+            flex: { xs: '1 0 100%', md: '0 0 40%' }, 
+            mb: { xs: 3, md: 0 }, 
+            pr: { md: 4 }
+          }}
+        >
           <Paper 
             elevation={0} 
             sx={{ 
@@ -241,11 +252,13 @@ const ProductDetail = () => {
               borderRadius: 2,
               overflow: 'hidden',
               mb: 2,
-              height: 400,
+              height: { xs: 320, sm: 350 },
+              maxWidth: '100%',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              bgcolor: 'white'
+              bgcolor: 'white',
+              mx: 'auto'
             }}
           >
             <CardMedia
@@ -255,7 +268,8 @@ const ProductDetail = () => {
               sx={{ 
                 height: '100%',
                 objectFit: 'contain', 
-                width: '100%'
+                width: '100%',
+                maxHeight: '100%'
               }}
             />
             
@@ -290,14 +304,14 @@ const ProductDetail = () => {
           </Paper>
           
           {/* Thumbnail images */}
-          <Box sx={{ display: 'flex', overflowX: 'auto', pb: 1 }}>
+          <Box sx={{ display: 'flex', overflowX: 'auto', pb: 1, justifyContent: 'center' }}>
             {product.images && product.images.map((image, index) => (
               <Box
                 key={index}
                 onClick={() => handleImageClick(index)}
                 sx={{
-                  width: 80,
-                  height: 80,
+                  width: 70,
+                  height: 70,
                   borderRadius: 1,
                   mr: 1,
                   overflow: 'hidden',
@@ -314,17 +328,30 @@ const ProductDetail = () => {
               </Box>
             ))}
           </Box>
-        </Grid>
+        </Box>
         
         {/* Right column - Product details */}
-        <Grid item xs={12} md={6}>
+        <Box 
+          sx={{ 
+            flex: { xs: '1 0 100%', md: '0 0 60%' }
+          }}
+        >
           <Box>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <Typography variant="h4" component="h1" gutterBottom fontWeight="bold">
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+              <Typography 
+                variant="h4" 
+                component="h1" 
+                gutterBottom 
+                fontWeight="bold"
+                sx={{ 
+                  fontSize: { xs: '1.5rem', sm: '2rem' },
+                  width: { xs: 'calc(100% - 80px)', md: 'auto' }
+                }}
+              >
                 {product.name}
               </Typography>
               
-              <Box>
+              <Box sx={{ display: 'flex', justifyContent: 'flex-end', minWidth: '80px' }}>
                 <IconButton color="default">
                   <FavoriteIcon />
                 </IconButton>
@@ -334,18 +361,18 @@ const ProductDetail = () => {
               </Box>
             </Box>
             
-            <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 1, flexWrap: 'wrap' }}>
               <Rating value={4.5} precision={0.5} readOnly />
               <Typography variant="body2" sx={{ ml: 1 }}>
                 (45 đánh giá)
               </Typography>
             </Box>
             
-            <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 1, flexWrap: 'wrap', gap: 1 }}>
               <Typography variant="body2" color="text.secondary">
                 Thương hiệu: <strong>{getBrandFromCategory()}</strong>
               </Typography>
-              <Divider orientation="vertical" flexItem sx={{ mx: 1, height: 16 }} />
+              <Divider orientation="vertical" flexItem sx={{ mx: 1, height: 16, display: { xs: 'none', sm: 'block' } }} />
               <Typography variant="body2" color="text.secondary">
                 Trạng thái: {' '}
                 {selectedVariant?.stock > 0 ? (
@@ -356,7 +383,7 @@ const ProductDetail = () => {
               </Typography>
             </Box>
             
-            {/* Price section - Updated to match the example */}
+            {/* Price section */}
             <Box sx={{ mt: 2 }}>
               {/* Current price */}
               <Typography 
@@ -364,9 +391,7 @@ const ProductDetail = () => {
                 component="div" 
                 color="primary" 
                 fontWeight="bold" 
-                sx={{ 
-                  display: 'block',
-                }}
+                sx={{ display: 'block' }}
               >
                 {formatPrice(getCurrentPrice())}
               </Typography>
@@ -417,7 +442,7 @@ const ProductDetail = () => {
                       size="large"
                       onClick={() => handleVariantSelect(variant)}
                       sx={{ 
-                        minWidth: 120, 
+                        minWidth: { xs: '100px', sm: '120px' },
                         borderRadius: 2,
                         textTransform: 'none',
                         flex: { xs: '1 0 45%', sm: '0 1 auto' }
@@ -444,7 +469,7 @@ const ProductDetail = () => {
             </Box>
             
             {/* Action buttons */}
-            <Box sx={{ display: 'flex', gap: 2, mt: 3 }}>
+            <Box sx={{ display: 'flex', gap: 2, mt: 3, flexDirection: { xs: 'column', sm: 'row' } }}>
               <Button 
                 variant="outlined" 
                 color="primary" 
@@ -474,8 +499,8 @@ const ProductDetail = () => {
               </Button>
             </Box>
           </Box>
-        </Grid>
-      </Grid>
+        </Box>
+      </Box>
       
       {/* Product details tabs */}
       <Box sx={{ mt: 6 }}>

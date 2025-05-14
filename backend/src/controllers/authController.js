@@ -184,7 +184,7 @@ exports.addAddress = async (req, res) => {
 exports.updateAddress = async (req, res) => {
     try {
         const userId = req.user.id;
-        const { addressId, updatedAddress } = req.body;
+        const { addressId, ...updatedAddress } = req.body;
 
         const user = await User.findById(userId);
         if (!user) return res.status(404).json({ msg: 'Người dùng không tồn tại' });
@@ -192,7 +192,20 @@ exports.updateAddress = async (req, res) => {
         const addressIndex = user.addresses.findIndex(addr => addr._id.toString() === addressId);
         if (addressIndex === -1) return res.status(404).json({ msg: 'Địa chỉ không tồn tại' });
 
-        user.addresses[addressIndex] = { ...user.addresses[addressIndex]._doc, ...updatedAddress };
+        // If this is set as default, update other addresses
+        if (updatedAddress.isDefault) {
+            user.addresses.forEach((addr, idx) => {
+                if (idx !== addressIndex) {
+                    addr.isDefault = false;
+                }
+            });
+        }
+
+        // Update the address fields
+        Object.keys(updatedAddress).forEach(key => {
+            user.addresses[addressIndex][key] = updatedAddress[key];
+        });
+
         await user.save();
 
         res.status(200).json({ msg: 'Cập nhật địa chỉ thành công', addresses: user.addresses });

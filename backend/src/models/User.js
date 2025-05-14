@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 
 const addressSchema = new mongoose.Schema({
+  name: String, // Custom name for the address (e.g., "Nhà riêng", "Văn phòng", etc.)
   fullName: String,
   street: String,
   city: String,
@@ -8,7 +9,9 @@ const addressSchema = new mongoose.Schema({
   postalCode: String,
   country: String,
   phoneNumber: String,
-  isDefault: { type: Boolean, default: false }
+  isDefault: { type: Boolean, default: false },
+  type: { type: String, enum: ['home', 'office', 'custom'], default: 'home' },
+  customType: String // For storing custom address type when type is 'custom'
 }, { _id: true }); // Thêm _id tự động cho mỗi địa chỉ
 
 const userSchema = new mongoose.Schema({

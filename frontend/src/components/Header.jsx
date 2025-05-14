@@ -16,7 +16,11 @@ import {
   ListItemIcon,
   Collapse,
   Paper,
-  Popper
+  Popper,
+  Menu,
+  MenuItem,
+  Avatar,
+  Divider
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -44,11 +48,15 @@ import {
   LocationOn as LocationIcon,
   LocalShipping as ShippingIcon,
   VerifiedUser as QualityIcon,
-  SupportAgent as SupportIcon
+  SupportAgent as SupportIcon,
+  Logout as LogoutIcon,
+  Settings as SettingsIcon,
+  ShoppingBag as OrdersIcon
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 import { categoriesApi } from '../services/api';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 
 const StyledInputBase = styled(InputBase)(({ theme }) => ({
   color: 'inherit',
@@ -138,6 +146,9 @@ const getCategoryIcon = (category) => {
 };
 
 const Header = () => {
+  const { currentUser, isAuthenticated, logout } = useAuth();
+  const navigate = useNavigate();
+  
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [categoryMenuOpen, setCategoryMenuOpen] = useState(false);
@@ -145,6 +156,10 @@ const Header = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [hoveredCategory, setHoveredCategory] = useState(null);
+  
+  // User menu state
+  const [userMenuAnchorEl, setUserMenuAnchorEl] = useState(null);
+  const userMenuOpen = Boolean(userMenuAnchorEl);
 
   // Fetch categories from API
   useEffect(() => {
@@ -190,6 +205,101 @@ const Header = () => {
     setHoveredCategory(null);
   };
 
+  const handleUserMenuOpen = (event) => {
+    setUserMenuAnchorEl(event.currentTarget);
+  };
+
+  const handleUserMenuClose = () => {
+    setUserMenuAnchorEl(null);
+  };
+  
+  const handleLogout = () => {
+    logout();
+    handleUserMenuClose();
+    navigate('/');
+  };
+
+  const renderUserSection = () => {
+    if (isAuthenticated) {
+      return (
+        <>
+          <IconButton 
+            color="inherit"
+            onClick={handleUserMenuOpen}
+            aria-controls={userMenuOpen ? 'user-menu' : undefined}
+            aria-haspopup="true"
+            aria-expanded={userMenuOpen ? 'true' : undefined}
+          >
+            <Avatar 
+              sx={{ 
+                width: 32, 
+                height: 32, 
+                bgcolor: 'primary.main',
+                fontSize: '0.875rem'
+              }}
+            >
+              {currentUser?.name ? currentUser.name.charAt(0).toUpperCase() : 'U'}
+            </Avatar>
+          </IconButton>
+          <Menu
+            id="user-menu"
+            anchorEl={userMenuAnchorEl}
+            open={userMenuOpen}
+            onClose={handleUserMenuClose}
+            MenuListProps={{
+              'aria-labelledby': 'user-button',
+            }}
+            PaperProps={{
+              elevation: 3,
+              sx: {
+                minWidth: 180,
+                boxShadow: 'rgb(145 158 171 / 24%) 0px 0px 2px 0px, rgb(145 158 171 / 24%) 0px 20px 40px -4px'
+              }
+            }}
+          >
+            <MenuItem sx={{ pointerEvents: 'none', opacity: 0.7 }}>
+              <Typography variant="body2">
+                Xin chào, {currentUser?.name || 'User'}
+              </Typography>
+            </MenuItem>
+            <Divider />
+            <MenuItem component={Link} to="/profile" onClick={handleUserMenuClose}>
+              <ListItemIcon>
+                <UserIcon fontSize="small" />
+              </ListItemIcon>
+              <ListItemText>Tài khoản</ListItemText>
+            </MenuItem>
+            <MenuItem component={Link} to="/orders" onClick={handleUserMenuClose}>
+              <ListItemIcon>
+                <OrdersIcon fontSize="small" />
+              </ListItemIcon>
+              <ListItemText>Đơn hàng</ListItemText>
+            </MenuItem>
+            <Divider />
+            <MenuItem onClick={handleLogout}>
+              <ListItemIcon>
+                <LogoutIcon fontSize="small" />
+              </ListItemIcon>
+              <ListItemText>Đăng xuất</ListItemText>
+            </MenuItem>
+          </Menu>
+        </>
+      );
+    }
+    
+    return (
+      <Button
+        component={Link}
+        to="/login"
+        color="inherit"
+        sx={{ display: { xs: 'none', md: 'flex' }, alignItems: 'center' }}
+        startIcon={<UserIcon />}
+      >
+        Đăng nhập
+      </Button>
+    );
+  };
+
   return (
     <>
       {/* Top bar */}
@@ -198,124 +308,168 @@ const Header = () => {
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <Box sx={{ display: 'flex', alignItems: 'center' }}>
               <PhoneIcon sx={{ fontSize: '0.875rem', mr: 0.5 }} />
-              <Typography variant="caption">Hotline: 0968 239 497 - 097 221 6881</Typography>
+              <Typography variant="caption">Hotline: 1900 1001</Typography>
             </Box>
-            <Box sx={{ display: 'flex', alignItems: 'center' }}>
-              <SupportIcon sx={{ fontSize: '0.875rem', mr: 0.5 }} />
-              <Typography variant="caption">Tư vấn build PC: 0986552235</Typography>
+            <Box sx={{ display: { xs: 'none', md: 'flex' }, alignItems: 'center', ml: 2 }}>
+              <LocationIcon sx={{ fontSize: '0.875rem', mr: 0.5 }} />
+              <Typography variant="caption">Hệ thống cửa hàng</Typography>
             </Box>
           </Box>
-          <Box sx={{ display: { xs: 'none', md: 'flex' }, alignItems: 'center' }}>
-            <LocationIcon sx={{ fontSize: '0.875rem', mr: 0.5 }} />
-            <Typography variant="caption">Địa chỉ CS1: 83-85 Thái Hà - Đống Đa - Hà Nội CS2: 83A Cầu Long - Q10 - TP.HCM</Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Box sx={{ display: { xs: 'none', md: 'flex' }, alignItems: 'center' }}>
+              <ShippingIcon sx={{ fontSize: '0.875rem', mr: 0.5 }} />
+              <Typography variant="caption">Miễn phí vận chuyển</Typography>
+            </Box>
+            <Box sx={{ display: { xs: 'none', md: 'flex' }, alignItems: 'center', ml: 2 }}>
+              <QualityIcon sx={{ fontSize: '0.875rem', mr: 0.5 }} />
+              <Typography variant="caption">Bảo hành chính hãng</Typography>
+            </Box>
+            <Box sx={{ display: { xs: 'none', md: 'flex' }, alignItems: 'center', ml: 2 }}>
+              <SupportIcon sx={{ fontSize: '0.875rem', mr: 0.5 }} />
+              <Typography variant="caption">Hỗ trợ 24/7</Typography>
+            </Box>
           </Box>
         </Container>
       </Box>
 
-      {/* Header */}
-      <Box sx={{ bgcolor: 'white', py: 1.5, boxShadow: 1 }}>
-        <Container maxWidth="lg" sx={{ px: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          {/* Logo */}
-          <Box sx={{ flexShrink: 0, mr: 2 }}>
-            <img
-              src="/placeholder.svg?height=60&width=180"
-              alt="TTESHOP Logo"
-              style={{ height: '48px', width: 'auto' }}
-            />
-          </Box>
-
-          {/* Search - Desktop */}
-          <Box sx={{ flexGrow: 1, maxWidth: '36rem', mx: 2, display: { xs: 'none', md: 'flex' } }}>
-            <Box sx={{ position: 'relative', width: '100%' }}>
-              <StyledInputBase
-                placeholder="Tìm kiếm sản phẩm..."
-                sx={{ width: '100%', border: '1px solid #d1d5db', borderRadius: '0.375rem 0 0 0.375rem' }}
-              />
-              <StyledButton 
+      {/* Main header */}
+      <AppBar position="static" color="default" sx={{ boxShadow: 1, backgroundColor: 'white' }}>
+        <Toolbar>
+          <Container maxWidth="lg" sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            {/* Logo area */}
+            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+              <IconButton 
+                edge="start" 
+                color="inherit" 
+                aria-label="menu"
+                onClick={toggleMobileMenu}
+                sx={{ display: { md: 'none' }, mr: 1 }}
+              >
+                <MenuIcon />
+              </IconButton>
+              <Link to="/" style={{ textDecoration: 'none', color: 'inherit', display: 'flex', alignItems: 'center' }}>
+                <img src="/images/logo-transparent.png" alt="K-Store Logo" style={{ height: 100, width: 120 }} />
+                <Typography 
+                  variant="h6" 
+                  component="div"
+                  sx={{ 
+                    fontWeight: 700, 
+                    color: '#1976d2',
+                    display: { xs: 'none', sm: 'block' },
+                    ml: 1
+                  }}
+                >
+                </Typography>
+              </Link>
+            </Box>
+            
+            {/* Categories button - desktop */}
+            <Button
+              variant="contained"
+              color="primary"
+              startIcon={<MenuIcon />}
+              endIcon={<ChevronDownIcon />}
+              onClick={toggleCategoryMenu}
+              sx={{ 
+                mr: 2, 
+                py: 1, 
+                px: 2,
+                display: { xs: 'none', md: 'flex' },
+                textTransform: 'none',
+                fontWeight: 600
+              }}
+            >
+              Danh mục
+            </Button>
+            
+            {/* Search */}
+            <Box 
+              sx={{ 
+                display: { xs: mobileSearchOpen ? 'flex' : 'none', md: 'flex' }, 
+                flexGrow: 1,
+                position: { xs: 'absolute', md: 'static' },
+                left: 0,
+                right: 0,
+                top: { xs: '100%', md: 'auto' },
+                zIndex: { xs: 1000, md: 'auto' },
+                backgroundColor: 'white',
+                padding: { xs: 2, md: 0 },
+                boxShadow: { xs: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', md: 'none' }
+              }}
+            >
+              <Paper
+                component="form"
                 sx={{ 
-                  position: 'absolute', 
-                  right: 0, 
-                  top: 0, 
-                  height: '100%', 
-                  borderRadius: '0 0.375rem 0.375rem 0'
+                  p: '2px 4px', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  width: '100%',
+                  border: '1px solid #e0e0e0',
+                  boxShadow: 'none'
                 }}
               >
-                <SearchIcon sx={{ height: '1.25rem', width: '1.25rem' }} />
-              </StyledButton>
-            </Box>
-          </Box>
-
-          {/* User actions */}
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            {/* Search icon - Mobile */}
-            <IconButton 
-              sx={{ display: { xs: 'flex', md: 'none' } }}
-              onClick={toggleMobileSearch}
-            >
-              <SearchIcon sx={{ height: '1.5rem', width: '1.5rem' }} />
-            </IconButton>
-            
-            {/* User - Desktop */}
-            <Box sx={{ display: { xs: 'none', md: 'flex' }, alignItems: 'center' }}>
-              <UserIcon sx={{ height: '1.25rem', width: '1.25rem', mr: 0.5 }} />
-              <Box sx={{ fontSize: '0.875rem' }}>
-                <Typography sx={{ color: '#4b5563' }}>Đăng nhập / Đăng ký</Typography>
-                <Box sx={{ display: 'flex', alignItems: 'center', color: '#6b7280' }}>
-                  <Typography variant="body2">Tài khoản của tôi</Typography>
-                  <ChevronDownIcon sx={{ height: '1rem', width: '1rem', ml: 0.5 }} />
-                </Box>
-              </Box>
+                <StyledInputBase
+                  placeholder="Tìm kiếm sản phẩm..."
+                  inputProps={{ 'aria-label': 'search' }}
+                />
+                <IconButton type="submit" sx={{ p: '10px' }} aria-label="search">
+                  <SearchIcon />
+                </IconButton>
+              </Paper>
             </Box>
             
-            {/* User icon - Mobile */}
-            <IconButton sx={{ display: { xs: 'flex', md: 'none' } }}>
-              <UserIcon sx={{ height: '1.5rem', width: '1.5rem' }} />
-            </IconButton>
-            
-            {/* Cart */}
-            <Box sx={{ position: 'relative' }}>
-              <Badge badgeContent={0} color="error">
-                <ShoppingCartIcon sx={{ height: '1.5rem', width: '1.5rem' }} />
-              </Badge>
-              <Typography sx={{ display: { xs: 'none', md: 'inline-block' }, ml: 1, fontSize: '0.875rem' }}>
-                Giỏ hàng
-              </Typography>
-            </Box>
-            
-            {/* Mobile menu */}
-            <IconButton 
-              sx={{ display: { xs: 'flex', md: 'none' } }}
-              onClick={toggleMobileMenu}
-            >
-              <MenuIcon sx={{ height: '1.5rem', width: '1.5rem' }} />
-            </IconButton>
-          </Box>
-        </Container>
-        
-        {/* Mobile Search Bar */}
-        <Collapse in={mobileSearchOpen}>
-          <Container maxWidth="lg" sx={{ px: 2, py: 2 }}>
-            <Box sx={{ position: 'relative', width: '100%' }}>
-              <StyledInputBase
-                placeholder="Tìm kiếm sản phẩm..."
-                fullWidth
-                sx={{ border: '1px solid #d1d5db', borderRadius: '0.375rem' }}
-              />
-              <StyledButton 
+            {/* Icons */}
+            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+              {/* Search icon for mobile */}
+              <IconButton 
+                size="large" 
+                color="inherit"
+                onClick={toggleMobileSearch}
+                sx={{ display: { md: 'none' } }}
+              >
+                <SearchIcon />
+              </IconButton>
+              
+              {/* Cart */}
+              <IconButton 
+                size="large" 
+                color="inherit"
+                component={Link}
+                to="/cart"
+                sx={{ ml: { xs: 0, md: 1 } }}
+              >
+                <Badge badgeContent={3} color="primary">
+                  <ShoppingCartIcon />
+                </Badge>
+              </IconButton>
+              
+              {/* User */}
+              {renderUserSection()}
+              
+              {/* Build PC button */}
+              <Button
+                variant="contained"
+                component={Link}
+                to="/build-pc"
+                color="warning"
+                startIcon={<BuildIcon />}
                 sx={{ 
-                  position: 'absolute', 
-                  right: 0, 
-                  top: 0, 
-                  height: '100%', 
-                  borderRadius: '0 0.375rem 0.375rem 0'
+                  ml: 2, 
+                  display: { xs: 'none', md: 'flex' },
+                  textTransform: 'none',
+                  fontWeight: 600,
+                  bgcolor: '#f59e0b',
+                  '&:hover': {
+                    bgcolor: '#d97706',
+                  },
                 }}
               >
-                <SearchIcon sx={{ height: '1.25rem', width: '1.25rem' }} />
-              </StyledButton>
+                Build PC
+              </Button>
             </Box>
           </Container>
-        </Collapse>
-      </Box>
+        </Toolbar>
+      </AppBar>
 
       {/* Navigation */}
       <Box sx={{ bgcolor: 'white', borderBottom: '1px solid #e5e7eb' }}>

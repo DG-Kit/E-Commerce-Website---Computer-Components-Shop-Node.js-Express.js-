@@ -8,6 +8,14 @@ import Home from './pages/Home';
 import ProductDetail from './pages/ProductDetail';
 import CategoryPage from './pages/CategoryPage';
 import ProductsPage from './pages/ProductsPage';
+import Login from './pages/Login';
+import Register from './pages/Register';
+import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
+import Profile from './pages/Profile';
+import Orders from './pages/Orders';
+import ProtectedRoute from './components/ProtectedRoute';
+import { AuthProvider } from './context/AuthContext';
 
 // Create a theme instance.
 const theme = createTheme({
@@ -39,25 +47,61 @@ function App() {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <Router>
-        <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
-          <Header />
-          <main style={{ flexGrow: 1 }}>
-            <Routes>
-              {/* Add your routes here */}
-              <Route path="/" element={<Home />} />
-              <Route path="/products" element={<ProductsPage />} />
-              <Route path="/product/:id" element={<ProductDetail />} />
-              <Route path="/category/:slug" element={<CategoryPage />} />
-              <Route path="/cart" element={<div>Shopping Cart Page</div>} />
-              <Route path="/login" element={<div>Login Page</div>} />
-              <Route path="/register" element={<div>Register Page</div>} />
-              <Route path="/build-pc" element={<div>Build PC Page</div>} />
-            </Routes>
-          </main>
-          <Footer />
-        </div>
-      </Router>
+      <AuthProvider>
+        <Router>
+          <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+            <Header />
+            <main style={{ flexGrow: 1 }}>
+              <Routes>
+                {/* Public routes */}
+                <Route path="/" element={<Home />} />
+                <Route path="/products" element={<ProductsPage />} />
+                <Route path="/product/:id" element={<ProductDetail />} />
+                <Route path="/category/:slug" element={<CategoryPage />} />
+                <Route path="/login" element={<Login />} />
+                <Route path="/register" element={<Register />} />
+                <Route path="/forgot-password" element={<ForgotPassword />} />
+                <Route path="/reset-password" element={<ResetPassword />} />
+                
+                {/* Protected routes */}
+                <Route 
+                  path="/cart" 
+                  element={
+                    <ProtectedRoute>
+                      <div>Shopping Cart Page</div>
+                    </ProtectedRoute>
+                  } 
+                />
+                <Route 
+                  path="/build-pc" 
+                  element={
+                    <ProtectedRoute>
+                      <div>Build PC Page</div>
+                    </ProtectedRoute>
+                  } 
+                />
+                <Route 
+                  path="/profile" 
+                  element={
+                    <ProtectedRoute>
+                      <Profile />
+                    </ProtectedRoute>
+                  } 
+                />
+                <Route 
+                  path="/orders" 
+                  element={
+                    <ProtectedRoute>
+                      <Orders />
+                    </ProtectedRoute>
+                  } 
+                />
+              </Routes>
+            </main>
+            <Footer />
+          </div>
+        </Router>
+      </AuthProvider>
     </ThemeProvider>
   );
 }
