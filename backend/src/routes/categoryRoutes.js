@@ -15,4 +15,10 @@ router.put('/update', verifyToken, verifyAdmin, CategoryCtrl.updateCategory);
 // Xóa danh mục
 router.delete('/delete', verifyToken, verifyAdmin, CategoryCtrl.deleteCategory);
 
+// Get all brands for a category
+router.get('/:categoryId/brands', CategoryCtrl.getCategoryBrands);
+
+// Add a new brand to a category
+router.post('/:categoryId/brands', verifyToken, verifyAdmin, CategoryCtrl.addCategoryBrand);
+
 module.exports = router;

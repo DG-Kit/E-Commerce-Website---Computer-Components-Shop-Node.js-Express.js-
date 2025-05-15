@@ -5,7 +5,7 @@ const Category = require('../models/Category');
 // Thêm sản phẩm
 exports.addProduct = async (req, res) => {
   try {
-    const { name, description, category, variants } = req.body;
+    const { name, description, category, variants, attributes } = req.body;
 
     const images = req.files.map(file => file.path);
     
@@ -27,6 +27,25 @@ exports.addProduct = async (req, res) => {
       return res.status(400).json({ msg: 'Danh mục không tồn tại. Vui lòng tạo danh mục trước.' });
     }
 
+    // Validate brand attribute if provided
+    let validatedAttributes = {};
+    if (attributes && attributes.brand) {
+      // Find the brand attribute in the category
+      const brandAttribute = categoryDoc.attributes.find(attr => attr.name.toLowerCase() === 'thương hiệu');
+      
+      if (brandAttribute && brandAttribute.values) {
+        // Check if the provided brand exists in category's brand values
+        const brandExists = brandAttribute.values.includes(attributes.brand);
+        if (!brandExists) {
+          return res.status(400).json({ 
+            msg: `Thương hiệu "${attributes.brand}" không tồn tại trong danh mục này.`,
+            availableBrands: brandAttribute.values
+          });
+        }
+        validatedAttributes.brand = attributes.brand;
+      }
+    }
+
     // Tìm giá thấp nhất từ các variants
     const minPrice = parsedVariants.reduce((min, variant) => {
       return variant.price < min ? variant.price : min;
@@ -45,6 +64,7 @@ exports.addProduct = async (req, res) => {
       images,
       variants: parsedVariants,
       discountPercentage: avgDiscountPercentage, // Thêm phần trăm giảm giá tổng thể
+      attributes: validatedAttributes, // Add the validated attributes
     });
 
     await newProduct.save();
@@ -63,6 +83,27 @@ exports.updateProduct = async (req, res) => {
     const product = await Product.findById(productId);
     if (!product) {
       return res.status(404).json({ msg: 'Sản phẩm không tồn tại' });
+    }
+
+    // Validate brand attribute if included in updates
+    if (updates.attributes && updates.attributes.brand) {
+      // Get the product's category
+      const categoryDoc = await Category.findById(product.category);
+      if (categoryDoc) {
+        // Find the brand attribute in the category
+        const brandAttribute = categoryDoc.attributes.find(attr => attr.name.toLowerCase() === 'thương hiệu');
+        
+        if (brandAttribute && brandAttribute.values) {
+          // Check if the provided brand exists in category's brand values
+          const brandExists = brandAttribute.values.includes(updates.attributes.brand);
+          if (!brandExists) {
+            return res.status(400).json({ 
+              msg: `Thương hiệu "${updates.attributes.brand}" không tồn tại trong danh mục này.`,
+              availableBrands: brandAttribute.values
+            });
+          }
+        }
+      }
     }
 
     if (updates.variants) {
@@ -85,7 +126,15 @@ exports.updateProduct = async (req, res) => {
 
     Object.keys(updates).forEach((key) => {
       if (key !== 'variants') {
-        product[key] = updates[key];
+        if (key === 'attributes') {
+          // Merge attributes instead of replacing
+          product.attributes = {
+            ...product.attributes,
+            ...updates.attributes
+          };
+        } else {
+          product[key] = updates[key];
+        }
       }
     });
 
@@ -117,12 +166,59 @@ exports.deleteProduct = async (req, res) => {
 
 exports.getProducts = async (req, res) => {
   try {
-    const { page = 1, limit = 10, sort, search, category, minPrice, maxPrice } = req.query;
+    const { page = 1, limit = 10, sort, search, category, minPrice, maxPrice, brand } = req.query;
+    console.log("Received query parameters:", { page, limit, sort, category, minPrice, maxPrice, brand });
 
     // Tạo bộ lọc
     const filter = {};
     if (search) filter.name = { $regex: search, $options: 'i' }; // Tìm kiếm theo tên (không phân biệt hoa thường)
-    if (category) filter.category = category; // Lọc theo danh mục
+    
+    // Enhanced category filtering
+    if (category) {
+      try {
+        // Check if it's a comma-separated list of categories
+        if (category.includes(',')) {
+          // Handle multiple categories with $in operator
+          const categoryIds = category.split(',')
+            .map(id => id.trim())
+            .filter(id => id); // Remove any empty strings
+          
+          if (categoryIds.length > 0) {
+            filter.category = { $in: categoryIds };
+            console.log("Filtering by multiple categories:", categoryIds);
+          }
+        } else {
+          // Single category ID - direct match 
+          filter.category = category.trim();
+          console.log("Filtering by single category:", category.trim());
+        }
+      } catch (err) {
+        console.error("Error processing category filter:", err);
+        // Continue with filter as-is if there's an error
+      }
+    }
+    
+    // Filter by brand if provided
+    if (brand) {
+      try {
+        if (brand.includes(',')) {
+          // Handle multiple brands with $in operator
+          const brands = brand.split(',')
+            .map(b => b.trim())
+            .filter(b => b); // Remove any empty strings
+          
+          if (brands.length > 0) {
+            filter['attributes.brand'] = { $in: brands };
+            console.log("Filtering by multiple brands:", brands);
+          }
+        } else {
+          filter['attributes.brand'] = brand.trim();
+          console.log("Filtering by single brand:", brand.trim());
+        }
+      } catch (err) {
+        console.error("Error processing brand filter:", err);
+      }
+    }
     
     // Cải thiện lọc giá để check cả giá variants và minPrice
     if (minPrice || maxPrice) {
@@ -151,6 +247,8 @@ exports.getProducts = async (req, res) => {
       filter.$or = priceFilters;
     }
 
+    console.log("Products query filter:", JSON.stringify(filter, null, 2));
+
     // Tính toán phân trang
     const skip = (page - 1) * limit;
 
@@ -163,13 +261,15 @@ exports.getProducts = async (req, res) => {
 
     // Lấy danh sách sản phẩm và populate danh mục
     const products = await Product.find(filter)
-      .populate('category', 'name description') // Chỉ lấy các trường `name` và `description` từ Category
+      .populate('category', 'name description attributes') // Include attributes from Category
       .sort(sortOptions)
       .skip(skip)
       .limit(Number(limit));
 
     // Tổng số sản phẩm
     const totalProducts = await Product.countDocuments(filter);
+    
+    console.log(`Found ${products.length} products out of ${totalProducts} total matches`);
 
     res.status(200).json({
       products,
@@ -178,6 +278,7 @@ exports.getProducts = async (req, res) => {
       currentPage: Number(page),
     });
   } catch (error) {
+    console.error('Error fetching products:', error);
     res.status(500).json({ msg: 'Lỗi server', error: error.message });
   }
 };
@@ -187,12 +288,32 @@ exports.getProductById = async (req, res) => {
     const { productId } = req.params;
 
     // Lấy sản phẩm và populate danh mục
-    const product = await Product.findById(productId).populate('category', 'name description');
+    const product = await Product.findById(productId)
+      .populate('category', 'name description attributes'); // Include attributes from Category
+      
     if (!product) {
       return res.status(404).json({ msg: 'Sản phẩm không tồn tại' });
     }
 
-    res.status(200).json(product);
+    // Extract brand info from category if available
+    let brandInfo = null;
+    if (product.attributes && product.attributes.brand && product.category && product.category.attributes) {
+      const brandAttribute = product.category.attributes.find(attr => 
+        attr.name.toLowerCase() === 'thương hiệu');
+      
+      if (brandAttribute) {
+        brandInfo = {
+          name: product.attributes.brand,
+          isValid: brandAttribute.values.includes(product.attributes.brand)
+        };
+      }
+    }
+
+    // Add brand info to response
+    const productResponse = product.toObject();
+    productResponse.brandInfo = brandInfo;
+
+    res.status(200).json(productResponse);
   } catch (error) {
     res.status(500).json({ msg: 'Lỗi server', error: error.message });
   }

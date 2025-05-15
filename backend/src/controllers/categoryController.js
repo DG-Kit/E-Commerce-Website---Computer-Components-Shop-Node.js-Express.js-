@@ -291,3 +291,80 @@ exports.deleteCategory = async (req, res) => {
     res.status(500).json({ msg: 'Lỗi server', error: error.message });
   }
 };
+
+// Get all brands for a category
+exports.getCategoryBrands = async (req, res) => {
+  try {
+    const { categoryId } = req.params;
+    
+    const category = await Category.findById(categoryId);
+    if (!category) {
+      return res.status(404).json({ msg: 'Danh mục không tồn tại' });
+    }
+    
+    // Find brand attribute
+    const brandAttribute = category.attributes.find(attr => 
+      attr.name.toLowerCase() === 'thương hiệu');
+    
+    if (!brandAttribute) {
+      return res.status(404).json({ msg: 'Danh mục này chưa có thuộc tính thương hiệu' });
+    }
+    
+    res.status(200).json({
+      categoryId: category._id,
+      categoryName: category.name,
+      brands: brandAttribute.values || []
+    });
+  } catch (error) {
+    console.error('Lỗi server:', error);
+    res.status(500).json({ msg: 'Lỗi server', error: error.message });
+  }
+};
+
+// Add a new brand to a category
+exports.addCategoryBrand = async (req, res) => {
+  try {
+    const { categoryId } = req.params;
+    const { brandName } = req.body;
+    
+    if (!brandName) {
+      return res.status(400).json({ msg: 'Tên thương hiệu không được để trống' });
+    }
+    
+    const category = await Category.findById(categoryId);
+    if (!category) {
+      return res.status(404).json({ msg: 'Danh mục không tồn tại' });
+    }
+    
+    // Find or create brand attribute
+    let brandAttribute = category.attributes.find(attr => 
+      attr.name.toLowerCase() === 'thương hiệu');
+    
+    if (!brandAttribute) {
+      // Create new brand attribute
+      brandAttribute = {
+        name: 'Thương hiệu',
+        values: [],
+        isFilterable: true
+      };
+      category.attributes.push(brandAttribute);
+    } else if (brandAttribute.values.includes(brandName)) {
+      return res.status(400).json({ msg: 'Thương hiệu này đã tồn tại trong danh mục' });
+    }
+    
+    // Add new brand value
+    brandAttribute.values.push(brandName);
+    
+    await category.save();
+    
+    res.status(200).json({
+      msg: 'Thêm thương hiệu thành công',
+      categoryId: category._id,
+      categoryName: category.name,
+      brands: brandAttribute.values
+    });
+  } catch (error) {
+    console.error('Lỗi server:', error);
+    res.status(500).json({ msg: 'Lỗi server', error: error.message });
+  }
+};

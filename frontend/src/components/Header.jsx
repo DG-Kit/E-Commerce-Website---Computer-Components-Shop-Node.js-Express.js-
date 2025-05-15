@@ -361,27 +361,8 @@ const Header = () => {
                 >
                 </Typography>
               </Link>
-            </Box>
-            
-            {/* Categories button - desktop */}
-            <Button
-              variant="contained"
-              color="primary"
-              startIcon={<MenuIcon />}
-              endIcon={<ChevronDownIcon />}
-              onClick={toggleCategoryMenu}
-              sx={{ 
-                mr: 2, 
-                py: 1, 
-                px: 2,
-                display: { xs: 'none', md: 'flex' },
-                textTransform: 'none',
-                fontWeight: 600
-              }}
-            >
-              Danh mục
-            </Button>
-            
+          </Box>
+
             {/* Search */}
             <Box 
               sx={{ 
@@ -414,7 +395,7 @@ const Header = () => {
                 />
                 <IconButton type="submit" sx={{ p: '10px' }} aria-label="search">
                   <SearchIcon />
-                </IconButton>
+            </IconButton>
               </Paper>
             </Box>
             
@@ -428,10 +409,10 @@ const Header = () => {
                 sx={{ display: { md: 'none' } }}
               >
                 <SearchIcon />
-              </IconButton>
-              
-              {/* Cart */}
-              <IconButton 
+            </IconButton>
+            
+            {/* Cart */}
+            <IconButton 
                 size="large" 
                 color="inherit"
                 component={Link}
@@ -441,11 +422,11 @@ const Header = () => {
                 <Badge badgeContent={3} color="primary">
                   <ShoppingCartIcon />
                 </Badge>
-              </IconButton>
+            </IconButton>
               
               {/* User */}
               {renderUserSection()}
-              
+        
               {/* Build PC button */}
               <Button
                 variant="contained"

@@ -202,29 +202,32 @@ const ProductDetail = () => {
     return selectedVariant?.discountPercentage || product?.discountPercentage || 0;
   };
   
-  // Extract brand from category info
-  const getBrandFromCategory = () => {
+  // Extract brand information
+  const getBrandInfo = () => {
+    // Check if product has attributes.brand
+    if (product.attributes && product.attributes.brand) {
+      return product.attributes.brand;
+    }
+    
+    // Check if product has brandInfo from API
+    if (product.brandInfo && product.brandInfo.name) {
+      return product.brandInfo.name;
+    }
+    
     // Check if product has a populated category object
     if (product.category && typeof product.category === 'object') {
-      // Check if the category name directly contains a brand (like "CPU Intel", "RAM Kingston")
-      const categoryName = product.category.name || '';
-      
-      // Common brand names in computer components
-      const commonBrands = [
-        'Intel', 'AMD', 'NVIDIA', 'ASUS', 'MSI', 'Gigabyte', 'ASRock',
-        'Kingston', 'Corsair', 'G.Skill', 'Crucial', 'Samsung', 'Western Digital',
-        'Seagate', 'SanDisk', 'EVGA', 'Zotac', 'Palit', 'Sapphire'
-      ];
-      
-      // Check if category name contains any of the common brands
-      for (const brand of commonBrands) {
-        if (categoryName.includes(brand)) {
-          return brand;
+      // Check if the category has brand attribute
+      if (product.category.attributes && product.category.attributes.length > 0) {
+        const brandAttribute = product.category.attributes.find(attr => 
+          attr.name.toLowerCase() === 'thương hiệu');
+        
+        if (brandAttribute && brandAttribute.values && brandAttribute.values.length > 0) {
+          return brandAttribute.values[0]; // Return first brand as default
         }
       }
       
-      // If no brand found in name, return the category name as fallback
-      return categoryName;
+      // Fallback to category name if no brand found
+      return product.category.name || 'Chưa xác định';
     }
     
     // If no category info, return default
@@ -370,7 +373,7 @@ const ProductDetail = () => {
             
             <Box sx={{ display: 'flex', alignItems: 'center', mb: 1, flexWrap: 'wrap', gap: 1 }}>
               <Typography variant="body2" color="text.secondary">
-                Thương hiệu: <strong>{getBrandFromCategory()}</strong>
+                Thương hiệu: <strong>{getBrandInfo()}</strong>
               </Typography>
               <Divider orientation="vertical" flexItem sx={{ mx: 1, height: 16, display: { xs: 'none', sm: 'block' } }} />
               <Typography variant="body2" color="text.secondary">

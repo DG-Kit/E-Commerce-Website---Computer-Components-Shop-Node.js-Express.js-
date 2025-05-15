@@ -48,16 +48,16 @@ function App() {
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <AuthProvider>
-        <Router>
-          <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
-            <Header />
-            <main style={{ flexGrow: 1 }}>
-              <Routes>
+      <Router>
+        <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+          <Header />
+          <main style={{ flexGrow: 1 }}>
+            <Routes>
                 {/* Public routes */}
-                <Route path="/" element={<Home />} />
-                <Route path="/products" element={<ProductsPage />} />
-                <Route path="/product/:id" element={<ProductDetail />} />
-                <Route path="/category/:slug" element={<CategoryPage />} />
+              <Route path="/" element={<Home />} />
+              <Route path="/products" element={<ProductsPage />} />
+              <Route path="/product/:id" element={<ProductDetail />} />
+              <Route path="/category/:slug" element={<CategoryPage />} />
                 <Route path="/login" element={<Login />} />
                 <Route path="/register" element={<Register />} />
                 <Route path="/forgot-password" element={<ForgotPassword />} />
@@ -96,11 +96,11 @@ function App() {
                     </ProtectedRoute>
                   } 
                 />
-              </Routes>
-            </main>
-            <Footer />
-          </div>
-        </Router>
+            </Routes>
+          </main>
+          <Footer />
+        </div>
+      </Router>
       </AuthProvider>
     </ThemeProvider>
   );
