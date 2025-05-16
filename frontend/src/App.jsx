@@ -19,7 +19,7 @@ import Orders from './pages/Orders';
 import OrderDetail from './pages/OrderDetail';
 import ProtectedRoute from './components/ProtectedRoute';
 import AdminRoute from './components/AdminRoute';
-import AdminLayout from './components/AdminLayout';
+import AdminLayout from './components/admin/AdminLayout';
 import Dashboard from './pages/admin/Dashboard';
 import ScrollToTop from './components/ScrollToTop';
 import { AuthProvider } from './context/AuthContext';
@@ -60,157 +60,96 @@ function App() {
           <Router>
             <ScrollToTop />
             <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+              {/* Main routes with header and footer */}
               <Routes>
-                {/* Admin Routes */}
+                {/* Admin routes */}
                 <Route 
-                  path="/admin/*"
+                  path="/admin/*" 
                   element={
                     <AdminRoute>
-                      <AdminLayout>
-                        <Routes>
-                          <Route path="/" element={<Dashboard />} />
-                          <Route path="/users" element={<div>Users Management</div>} />
-                          <Route path="/products" element={<div>Products Management</div>} />
-                          <Route path="/categories" element={<div>Categories Management</div>} />
-                          <Route path="/orders" element={<div>Orders Management</div>} />
-                          <Route path="/coupons" element={<div>Coupons Management</div>} />
-                          <Route path="/settings" element={<div>Settings</div>} />
-                        </Routes>
-                      </AdminLayout>
+                      <AdminLayout />
                     </AdminRoute>
                   }
-                />
-              
-                {/* Public routes */}
-                <Route path="/" element={
+                >
+                  <Route index element={<Dashboard />} />
+                  {/* Add other admin routes here */}
+                  <Route path="products" element={<div>Quản lý sản phẩm</div>} />
+                  <Route path="categories" element={<div>Quản lý danh mục</div>} />
+                  <Route path="orders" element={<div>Quản lý đơn hàng</div>} />
+                  <Route path="users" element={<div>Quản lý người dùng</div>} />
+                  <Route path="coupons" element={<div>Quản lý mã giảm giá</div>} />
+                  <Route path="settings" element={<div>Cài đặt hệ thống</div>} />
+                </Route>
+                
+                {/* Regular routes with header and footer */}
+                <Route path="/*" element={
                   <>
                     <Header />
                     <main style={{ flexGrow: 1 }}>
-                      <Home />
+                      <Routes>
+                        {/* Public routes */}
+                        <Route path="/" element={<Home />} />
+                        <Route path="/products" element={<ProductsPage />} />
+                        <Route path="/product/:id" element={<ProductDetail />} />
+                        <Route path="/category/:slug" element={<CategoryPage />} />
+                        <Route path="/login" element={<Login />} />
+                        <Route path="/register" element={<Register />} />
+                        <Route path="/forgot-password" element={<ForgotPassword />} />
+                        <Route path="/reset-password" element={<ResetPassword />} />
+                        
+                        {/* Protected routes */}
+                        <Route 
+                          path="/cart" 
+                          element={
+                            <ProtectedRoute>
+                              <CartPage />
+                            </ProtectedRoute>
+                          } 
+                        />
+                        <Route 
+                          path="/checkout" 
+                          element={
+                            <ProtectedRoute>
+                              <CheckoutPage />
+                            </ProtectedRoute>
+                          } 
+                        />
+                        <Route 
+                          path="/build-pc" 
+                          element={
+                            <ProtectedRoute>
+                              <div>Build PC Page</div>
+                            </ProtectedRoute>
+                          } 
+                        />
+                        <Route 
+                          path="/profile" 
+                          element={
+                            <ProtectedRoute>
+                              <Profile />
+                            </ProtectedRoute>
+                          } 
+                        />
+                        <Route 
+                          path="/orders" 
+                          element={
+                            <ProtectedRoute>
+                              <Orders />
+                            </ProtectedRoute>
+                          } 
+                        />
+                        <Route 
+                          path="/orders/:id" 
+                          element={
+                            <ProtectedRoute>
+                              <OrderDetail />
+                            </ProtectedRoute>
+                          } 
+                        />
+                      </Routes>
                     </main>
                     <Footer />
                   </>
-                } />
-                
-                <Route path="/products" element={
-                  <>
-                    <Header />
-                    <main style={{ flexGrow: 1 }}>
-                      <ProductsPage />
-                    </main>
-                    <Footer />
-                  </>
-                } />
-                
-                <Route path="/product/:id" element={
-                  <>
-                    <Header />
-                    <main style={{ flexGrow: 1 }}>
-                      <ProductDetail />
-                    </main>
-                    <Footer />
-                  </>
-                } />
-                
-                <Route path="/category/:slug" element={
-                  <>
-                    <Header />
-                    <main style={{ flexGrow: 1 }}>
-                      <CategoryPage />
-                    </main>
-                    <Footer />
-                  </>
-                } />
-                
-                <Route path="/login" element={
-                  <>
-                    <Header />
-                    <main style={{ flexGrow: 1 }}>
-                      <Login />
-                    </main>
-                    <Footer />
-                  </>
-                } />
-                
-                <Route path="/register" element={
-                  <>
-                    <Header />
-                    <main style={{ flexGrow: 1 }}>
-                      <Register />
-                    </main>
-                    <Footer />
-                  </>
-                } />
-                
-                <Route path="/forgot-password" element={
-                  <>
-                    <Header />
-                    <main style={{ flexGrow: 1 }}>
-                      <ForgotPassword />
-                    </main>
-                    <Footer />
-                  </>
-                } />
-                
-                <Route path="/reset-password" element={
-                  <>
-                    <Header />
-                    <main style={{ flexGrow: 1 }}>
-                      <ResetPassword />
-                    </main>
-                    <Footer />
-                  </>
-                } />
-                
-                {/* Protected routes */}
-                <Route path="/cart" element={
-                  <ProtectedRoute>
-                    <Header />
-                    <main style={{ flexGrow: 1 }}>
-                      <CartPage />
-                    </main>
-                    <Footer />
-                  </ProtectedRoute>
-                } />
-                
-                <Route path="/checkout" element={
-                  <ProtectedRoute>
-                    <Header />
-                    <main style={{ flexGrow: 1 }}>
-                      <CheckoutPage />
-                    </main>
-                    <Footer />
-                  </ProtectedRoute>
-                } />
-                
-                <Route path="/profile" element={
-                  <ProtectedRoute>
-                    <Header />
-                    <main style={{ flexGrow: 1 }}>
-                      <Profile />
-                    </main>
-                    <Footer />
-                  </ProtectedRoute>
-                } />
-                
-                <Route path="/orders" element={
-                  <ProtectedRoute>
-                    <Header />
-                    <main style={{ flexGrow: 1 }}>
-                      <Orders />
-                    </main>
-                    <Footer />
-                  </ProtectedRoute>
-                } />
-                
-                <Route path="/orders/:id" element={
-                  <ProtectedRoute>
-                    <Header />
-                    <main style={{ flexGrow: 1 }}>
-                      <OrderDetail />
-                    </main>
-                    <Footer />
-                  </ProtectedRoute>
                 } />
               </Routes>
             </div>

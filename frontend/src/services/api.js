@@ -17,10 +17,30 @@ api.interceptors.request.use(
     const token = localStorage.getItem('token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
+      console.log(`Adding token to ${config.url}`);
+    } else {
+      console.warn(`No token for request to ${config.url}`);
     }
     return config;
   },
   (error) => {
+    console.error("Request interceptor error:", error);
+    return Promise.reject(error);
+  }
+);
+
+// Add response interceptor for debugging
+api.interceptors.response.use(
+  (response) => {
+    return response;
+  },
+  (error) => {
+    console.error("API Error Response:", {
+      url: error.config?.url,
+      status: error.response?.status,
+      data: error.response?.data,
+      message: error.message
+    });
     return Promise.reject(error);
   }
 );
@@ -134,6 +154,33 @@ export const paymentApi = {
   
   // Get payment history
   getPaymentHistory: () => api.get('/payment/history'),
+};
+
+// Admin API
+export const adminApi = {
+  // Get dashboard statistics
+  getDashboardStats: () => api.get('/admin/dashboard/stats'),
+  
+  // Get recent orders
+  getRecentOrders: (limit = 5) => api.get('/admin/dashboard/recent-orders', { params: { limit } }),
+  
+  // Get best selling products
+  getBestSellingProducts: (limit = 5, timeFrame = 'all') => api.get('/admin/dashboard/best-sellers', { params: { limit, timeFrame } }),
+  
+  // Get revenue data by time range (week, month, year)
+  getRevenueData: (timeRange) => api.get('/admin/dashboard/revenue', { params: { timeRange } }),
+  
+  // Get all products (admin)
+  getAllProducts: (params) => api.get('/admin/products', { params }),
+  
+  // Get all orders (admin)
+  getAllOrders: (params) => api.get('/orders/admin/all', { params }),
+  
+  // Get all users (admin)
+  getAllUsers: (params) => api.get('/auth/all-users', { params }),
+  
+  // Get all coupons (admin)
+  getAllCoupons: (params) => api.get('/coupons/admin/all', { params }),
 };
 
 export default api;

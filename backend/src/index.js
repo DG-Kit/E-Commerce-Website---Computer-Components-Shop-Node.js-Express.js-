@@ -9,6 +9,7 @@ const cartRoutes = require('./routes/cartRoutes');
 const paymentRoutes = require('./routes/paymentRoutes');
 const orderRoutes = require('./routes/orderRoutes');
 const couponRoutes = require('./routes/couponRoutes');
+const adminRoutes = require('./routes/adminRoutes');
 
 const app = express();
 app.use(cors());
@@ -26,6 +27,7 @@ app.use('/api/cart', cartRoutes);
 app.use('/api/payment', paymentRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/coupons', couponRoutes);
+app.use('/api/admin', adminRoutes);
 
 app.get('/api', (req, res) => res.send('API is working'));
 

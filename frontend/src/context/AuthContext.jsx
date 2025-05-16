@@ -28,7 +28,7 @@ export const AuthProvider = ({ children }) => {
           setCurrentUser(response.data);
           setIsAuthenticated(true);
           // Check if user is admin
-          setIsAdmin(response.data?.role === 'admin');
+          setIsAdmin(response.data.role === 'admin');
         } catch (error) {
           // Handle token expiration or invalid token
           console.error('Auth check failed:', error);
@@ -53,7 +53,7 @@ export const AuthProvider = ({ children }) => {
     setCurrentUser(userResponse.data);
     setIsAuthenticated(true);
     // Check if user is admin
-    setIsAdmin(userResponse.data?.role === 'admin');
+    setIsAdmin(userResponse.data.role === 'admin');
     
     return response;
   };
