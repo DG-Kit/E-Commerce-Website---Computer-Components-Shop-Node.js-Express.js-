@@ -24,7 +24,14 @@ import {
   FormControlLabel,
   Checkbox,
   Stack,
-  Chip
+  Chip,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  TablePagination
 } from '@mui/material';
 import {
   Edit as EditIcon,
@@ -33,11 +40,19 @@ import {
   Add as AddIcon,
   Home as HomeIcon,
   Business as BusinessIcon,
-  LocationOn as LocationIcon
+  LocationOn as LocationIcon,
+  Receipt as ReceiptIcon,
+  Payment as PaymentIcon,
+  LocalShipping as ShippingIcon,
+  CheckCircle as CheckCircleIcon,
+  Cancel as CancelIcon,
+  RemoveRedEye as ViewIcon
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import { addressApi } from '../services/api';
 import { authApi } from '../services/api';
+import { orderApi } from '../services/api';
+import { Link, useNavigate } from 'react-router-dom';
 
 // Sample shipping addresses for demonstration
 const sampleAddresses = [
@@ -114,6 +129,16 @@ const Profile = () => {
   const [processingAddress, setProcessingAddress] = useState(false);
   const [confirmDeleteDialog, setConfirmDeleteDialog] = useState(false);
   const [addressToDelete, setAddressToDelete] = useState(null);
+
+  // States for order history
+  const [orders, setOrders] = useState([]);
+  const [loadingOrders, setLoadingOrders] = useState(false);
+  const [orderError, setOrderError] = useState('');
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(5);
+  const [totalOrders, setTotalOrders] = useState(0);
+
+  const navigate = useNavigate();
 
   // Initialize form data when user data is loaded
   useEffect(() => {
@@ -472,6 +497,94 @@ const Profile = () => {
     }
   };
 
+  // Fetch order history
+  useEffect(() => {
+    if (activeTab === 1 && currentUser) {
+      fetchOrderHistory();
+    }
+  }, [activeTab, currentUser, page, rowsPerPage]);
+  
+  const fetchOrderHistory = async () => {
+    setLoadingOrders(true);
+    setOrderError('');
+    try {
+      const response = await orderApi.getOrderHistory(page + 1, rowsPerPage);
+      setOrders(response.data.data.orders || []);
+      setTotalOrders(response.data.data.pagination?.total || 0);
+    } catch (err) {
+      console.error('Failed to fetch order history:', err);
+      setOrderError('Không thể tải lịch sử đơn hàng. Vui lòng thử lại sau.');
+    } finally {
+      setLoadingOrders(false);
+    }
+  };
+  
+  const handleChangePage = (event, newPage) => {
+    setPage(newPage);
+  };
+  
+  const handleChangeRowsPerPage = (event) => {
+    setRowsPerPage(parseInt(event.target.value, 10));
+    setPage(0);
+  };
+  
+  // Format currency
+  const formatCurrency = (amount) => {
+    return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount);
+  };
+  
+  // Format date
+  const formatDate = (dateString) => {
+    return new Date(dateString).toLocaleDateString('vi-VN', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+  
+  // Get status color and label
+  const getOrderStatus = (status) => {
+    const statusMap = {
+      'PENDING': { color: 'warning', label: 'Chờ xác nhận', icon: <ReceiptIcon fontSize="small" /> },
+      'PROCESSING': { color: 'info', label: 'Đang xử lý', icon: <ShippingIcon fontSize="small" /> },
+      'DELIVERED': { color: 'success', label: 'Đã giao hàng', icon: <CheckCircleIcon fontSize="small" /> },
+      'CANCELLED': { color: 'error', label: 'Đã hủy', icon: <CancelIcon fontSize="small" /> }
+    };
+    
+    return statusMap[status] || { color: 'default', label: status, icon: <ReceiptIcon fontSize="small" /> };
+  };
+  
+  // Get payment method label
+  const getPaymentMethod = (method) => {
+    const methodMap = {
+      'COD': 'Thanh toán khi nhận hàng',
+      'VNPAY': 'Thanh toán qua VNPay',
+      'WALLET': 'Ví điện tử'
+    };
+    
+    return methodMap[method] || method;
+  };
+  
+  // View order details
+  const handleViewOrder = (orderId) => {
+    navigate(`/orders/${orderId}`);
+  };
+  
+  // Cancel order
+  const handleCancelOrder = async (orderId) => {
+    try {
+      await orderApi.cancelOrder(orderId);
+      setSuccess('Đơn hàng đã được hủy thành công!');
+      setTimeout(() => setSuccess(''), 3000);
+      fetchOrderHistory();
+    } catch (err) {
+      console.error('Failed to cancel order:', err);
+      setError('Không thể hủy đơn hàng. Vui lòng thử lại sau.');
+    }
+  };
+
   if (loading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '50vh' }}>
@@ -632,6 +745,142 @@ const Profile = () => {
     );
   };
 
+  // Render the order history tab content
+  const renderOrderHistoryTab = () => {
+    if (loadingOrders) {
+      return (
+        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', py: 8 }}>
+          <CircularProgress />
+        </Box>
+      );
+    }
+    
+    if (orderError) {
+      return (
+        <Alert severity="error" sx={{ mb: 3 }}>
+          {orderError}
+        </Alert>
+      );
+    }
+    
+    if (orders.length === 0) {
+      return (
+        <Box sx={{ p: 4, textAlign: 'center' }}>
+          <ReceiptIcon sx={{ fontSize: 60, color: 'text.secondary', mb: 2 }} />
+          <Typography variant="h6" gutterBottom>
+            Bạn chưa có đơn hàng nào
+          </Typography>
+          <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
+            Hãy mua sắm để có đơn hàng đầu tiên!
+          </Typography>
+          <Button 
+            variant="contained" 
+            onClick={() => navigate('/products')}
+          >
+            Mua sắm ngay
+          </Button>
+        </Box>
+      );
+    }
+    
+    return (
+      <Box>
+        <TableContainer component={Paper} elevation={1} sx={{ mb: 2 }}>
+          <Table sx={{ minWidth: 650 }} aria-label="order history table">
+            <TableHead>
+              <TableRow>
+                <TableCell>Mã đơn hàng</TableCell>
+                <TableCell>Ngày đặt</TableCell>
+                <TableCell>Trạng thái</TableCell>
+                <TableCell>Thanh toán</TableCell>
+                <TableCell align="right">Tổng tiền</TableCell>
+                <TableCell align="center">Thao tác</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {orders.map((order) => {
+                const status = getOrderStatus(order.status);
+                
+                return (
+                  <TableRow key={order._id}>
+                    <TableCell component="th" scope="row">
+                      #{order._id.substring(order._id.length - 8)}
+                    </TableCell>
+                    <TableCell>{formatDate(order.createdAt)}</TableCell>
+                    <TableCell>
+                      <Chip
+                        icon={status.icon}
+                        label={status.label}
+                        color={status.color}
+                        size="small"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                        <PaymentIcon fontSize="small" sx={{ mr: 1 }} />
+                        <Typography variant="body2">
+                          {getPaymentMethod(order.paymentMethod)}
+                        </Typography>
+                      </Box>
+                      {order.isPaid && (
+                        <Chip
+                          label="Đã thanh toán"
+                          color="success"
+                          size="small"
+                          sx={{ mt: 0.5 }}
+                        />
+                      )}
+                    </TableCell>
+                    <TableCell align="right">
+                      <Typography fontWeight="bold" color="primary">
+                        {formatCurrency(order.totalAmount)}
+                      </Typography>
+                    </TableCell>
+                    <TableCell align="center">
+                      <Button
+                        variant="outlined"
+                        size="small"
+                        startIcon={<ViewIcon />}
+                        onClick={() => handleViewOrder(order._id)}
+                        sx={{ mr: 1 }}
+                      >
+                        Chi tiết
+                      </Button>
+                      
+                      {order.status === 'PENDING' && (
+                        <Button
+                          variant="outlined"
+                          size="small"
+                          color="error"
+                          startIcon={<CancelIcon />}
+                          onClick={() => handleCancelOrder(order._id)}
+                        >
+                          Hủy đơn
+                        </Button>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </TableContainer>
+        
+        <TablePagination
+          component="div"
+          count={totalOrders}
+          page={page}
+          onPageChange={handleChangePage}
+          rowsPerPage={rowsPerPage}
+          onRowsPerPageChange={handleChangeRowsPerPage}
+          rowsPerPageOptions={[5, 10, 25]}
+          labelRowsPerPage="Số đơn mỗi trang:"
+          labelDisplayedRows={({ from, to, count }) => `${from}-${to} của ${count}`}
+        />
+      </Box>
+    );
+  };
+
   return (
     <Container maxWidth="lg" sx={{ py: 6 }}>
       <Grid container spacing={4}>
@@ -775,11 +1024,7 @@ const Profile = () => {
                 <Typography variant="h5" component="h1" fontWeight={600} sx={{ mb: 3 }}>
                   Đơn hàng của tôi
                 </Typography>
-                <Box sx={{ p: 4, textAlign: 'center' }}>
-                  <Typography variant="body1">
-                    Bạn chưa có đơn hàng nào.
-                  </Typography>
-                </Box>
+                {renderOrderHistoryTab()}
               </Box>
             )}
 

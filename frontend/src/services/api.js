@@ -99,7 +99,41 @@ export const cartApi = {
   updateCartItem: (data) => api.put('/cart/update', data),
   
   // Remove from cart
-  removeFromCart: (productId) => api.delete(`/cart/remove/${productId}`),
+  removeFromCart: (data) => api.delete('/cart/remove', { data }),
+};
+
+// Order API
+export const orderApi = {
+  // Create a new order
+  createOrder: (data) => api.post('/orders', data),
+  
+  // Get order by ID
+  getOrderById: (id) => api.get(`/orders/${id}`),
+  
+  // Get current user's orders
+  getUserOrders: (params) => api.get('/orders/user', { params }),
+  
+  // Get user order history (with pagination)
+  getOrderHistory: (page = 1, limit = 10) => 
+    api.get('/orders/user', { params: { page, limit, sort: 'createdAt:desc' } }),
+  
+  // Cancel an order
+  cancelOrder: (id) => api.put(`/orders/${id}/cancel`),
+};
+
+// Coupon API
+export const couponApi = {
+  // Verify coupon
+  verifyCoupon: (data) => api.post('/coupons/verify', data),
+};
+
+// Payment API
+export const paymentApi = {
+  // Create payment URL (VNPay)
+  createVNPayUrl: (data) => api.post('/payment/create-vnpay-url', data),
+  
+  // Get payment history
+  getPaymentHistory: () => api.get('/payment/history'),
 };
 
 export default api;

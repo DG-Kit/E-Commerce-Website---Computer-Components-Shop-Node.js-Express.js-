@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Card,
   CardMedia,
@@ -28,6 +28,7 @@ import {
   Remove as RemoveIcon
 } from '@mui/icons-material';
 import { Link } from 'react-router-dom';
+import { useCart } from '../context/CartContext';
 
 // Format currency to VND
 const formatPrice = (price) => {
@@ -61,32 +62,38 @@ const modalStyle = {
 const ProductCard = ({ product }) => {
   const [openQuickView, setOpenQuickView] = useState(false);
   const [quantity, setQuantity] = useState(1);
+  const [selectedVariant, setSelectedVariant] = useState(null);
   const theme = useTheme();
+  const { addToCart, showNotification } = useCart();
 
   // Handle missing images or variants with default values
   const imageUrl = product.images && product.images.length > 0
     ? product.images[0]
     : '/placeholder.svg?height=200&width=200';
 
-  // Determine price: Use variant price if available, else minPrice, else 0
-  const price = product.variants && product.variants.length > 0 && product.variants[0].price
-    ? product.variants[0].price
-    : product.minPrice || 0;
+  // Set initial variant on product load or QuickView open
+  useEffect(() => {
+    if (product.variants && product.variants.length > 0) {
+      setSelectedVariant(product.variants[0]);
+    }
+  }, [product]);
 
-  // Determine discount percentage
-  const discountPercentage = product.variants && product.variants.length > 0 && product.variants[0].discountPercentage
-    ? product.variants[0].discountPercentage
-    : product.discountPercentage || 0;
+  // Determine price: Use selected variant price if available, else first variant price, else minPrice, else 0
+  const price = selectedVariant?.price || 
+    (product.variants && product.variants.length > 0 ? product.variants[0].price : product.minPrice || 0);
+
+  // Determine discount percentage based on the selected variant
+  const discountPercentage = selectedVariant?.discountPercentage ||
+    (product.variants && product.variants.length > 0 ? product.variants[0].discountPercentage : product.discountPercentage || 0);
 
   // Calculate original price based on current price and discount percentage
   const originalPrice = discountPercentage > 0
     ? Math.round(price / (1 - discountPercentage / 100))
     : price;
 
-  // Determine stock: Use variant stock if available, else product stock, else 0
-  const stock = product.variants && product.variants.length > 0 && typeof product.variants[0].stock === 'number'
-    ? product.variants[0].stock
-    : typeof product.stock === 'number' ? product.stock : 0;
+  // Determine stock based on selected variant
+  const stock = selectedVariant?.stock || 
+    (product.variants && product.variants.length > 0 ? product.variants[0].stock : product.stock || 0);
 
   // Extract brand from category info
   const getBrandFromCategory = () => {
@@ -122,6 +129,10 @@ const ProductCard = ({ product }) => {
 
   const handleOpenQuickView = () => {
     setQuantity(1);
+    // Reset selectedVariant to the first variant
+    if (product.variants && product.variants.length > 0) {
+      setSelectedVariant(product.variants[0]);
+    }
     setOpenQuickView(true);
   };
   const handleCloseQuickView = () => setOpenQuickView(false);
@@ -148,8 +159,47 @@ const ProductCard = ({ product }) => {
     }
   };
 
-  const handleAddToCart = (qty = 1) => {
-    console.log(`Adding ${qty} of ${product.name} (ID: ${product._id}) to cart.`);
+  // Variant selection handler
+  const handleVariantSelect = (variant) => {
+    setSelectedVariant(variant);
+  };
+
+  const handleAddToCart = async (qty = 1) => {
+    // Kiểm tra product._id tồn tại
+    if (!product || !product._id) {
+      console.error('Product ID not found');
+      showNotification('Không thể tìm thấy thông tin sản phẩm', 'error');
+      return;
+    }
+    
+    // Kiểm tra xem sản phẩm có variants hay không
+    if (!product.variants || !Array.isArray(product.variants) || product.variants.length === 0) {
+      console.error('Product has no variants');
+      showNotification('Sản phẩm không có biến thể', 'error');
+      return;
+    }
+    
+    // Lấy variant đã chọn hoặc variant đầu tiên nếu chưa chọn
+    const variant = selectedVariant || product.variants[0];
+    if (!variant || !variant._id) {
+      console.error('Variant ID not found');
+      showNotification('Không thể tìm thấy thông tin biến thể sản phẩm', 'error');
+      return;
+    }
+    
+    // Kiểm tra số lượng tồn kho
+    if (variant.stock <= 0) {
+      console.error('Product is out of stock');
+      showNotification('Sản phẩm đã hết hàng', 'error');
+      return;
+    }
+    
+    // Sử dụng context để thêm vào giỏ hàng
+    await addToCart(product._id, variant._id, qty);
+    
+    // Notification is handled by CartContext now
+    // Close QuickView after adding to cart
+    setOpenQuickView(false);
   };
 
   const handlePayNow = (qty = 1) => {
@@ -248,7 +298,6 @@ const ProductCard = ({ product }) => {
         )}
 
         {/* --- Product Image Container --- */}
-        {/* Wrap image in a Box with fixed aspect ratio */}
         <Link to={`/product/${product._id}`} style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}>
           <Box
             sx={{
@@ -335,7 +384,7 @@ const ProductCard = ({ product }) => {
             </Typography>
           </Box>
 
-          {/* --- Price and Add to Cart Button (Pushed to bottom) --- */}
+          {/* --- Price and View Details Button (Pushed to bottom) --- */}
           <Box sx={{ mt: 'auto', pt: 0.5 }}>
             {/* Price display with original price and discount if applicable */}
             <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 0.5, mb: 0.75 }}>
@@ -387,34 +436,26 @@ const ProductCard = ({ product }) => {
 
             <Button
               variant="contained"
-              color="warning"
+              color="primary"
               fullWidth
-              startIcon={<CartIcon sx={{ fontSize: '1rem' }} />}
-              onClick={() => handleAddToCart(1)}
-              disabled={stock <= 0}
+              component={Link}
+              to={`/product/${product._id}`}
               sx={{
                 borderRadius: '4px',
                 textTransform: 'none',
                 fontWeight: 600,
-                backgroundColor: '#f59e0b',
-                '&:hover': {
-                  backgroundColor: '#d97706',
-                },
                 py: 0.5, // Reduced vertical padding
                 minHeight: '30px', // Ensure minimum height
                 fontSize: '0.8125rem',
-                '& .MuiButton-startIcon': {
-                  mr: 0.5 // Reduced margin for icon
-                }
               }}
             >
-              Thêm vào giỏ
+              Xem chi tiết
             </Button>
           </Box>
         </CardContent>
       </Card>
 
-      {/* --- Quick View Modal --- */}
+      {/* Quick View Modal */}
       <Modal
         open={openQuickView}
         onClose={handleCloseQuickView}
@@ -452,70 +493,70 @@ const ProductCard = ({ product }) => {
                 bgcolor: theme.palette.grey[50],
                 p: 2,
                 borderRadius: 1
-                }}>
-                  <img
-                    src={imageUrl}
-                    alt={product.name}
+              }}>
+                <img
+                  src={imageUrl}
+                  alt={product.name}
                   style={{ 
                     maxWidth: '180px',
                     maxHeight: '180px',
                     objectFit: 'contain'
-                    }}
-                  />
-                </Box>
-                {/* Product Title */}
+                  }}
+                />
+              </Box>
+              {/* Product Title */}
               <Typography 
                 variant="h6" 
                 component="h2" 
                 fontWeight="bold" 
                 mb={0.5}
-                >
-                  {product.name}
-                </Typography>
+              >
+                {product.name}
+              </Typography>
 
-                {/* Brand & Stock Info */}
+              {/* Brand & Stock Info */}
               <Typography variant="caption" color="text.secondary" display="block" mb={1}>
                 <span>Thương hiệu: {brandDisplay}</span> | <span>Kho: {stock > 0 ? `${stock} sản phẩm` : 'Hết hàng'}</span>
-                </Typography>
+              </Typography>
 
-                {/* Rating */}
-                <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                  <Rating value={product.averageRating || 4.5} precision={0.5} size="small" readOnly />
+              {/* Rating */}
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                <Rating value={product.averageRating || 4.5} precision={0.5} size="small" readOnly />
                 <Typography variant="caption" sx={{ ml: 1, color: 'text.secondary' }}>
-                    ({product.numOfReviews || 10} đánh giá)
-                  </Typography>
-                </Box>
+                  ({product.numOfReviews || 10} đánh giá)
+                </Typography>
+              </Box>
 
-                {/* Price Section */}
+              {/* Price Section */}
               <Box sx={{ mb: 2 }}>
                 <Typography variant="h5" color="error" fontWeight="bold">
-                    {formatPrice(price)}
-                  </Typography>
-                  
-                  {discountPercentage > 0 && (
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
+                  {formatPrice(price)}
+                </Typography>
+                
+                {discountPercentage > 0 && (
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
                     <Typography 
                       variant="body2" 
                       color="text.secondary" 
-                        sx={{ textDecoration: 'line-through' }}
-                      >
-                        {formatPrice(originalPrice)}
-                      </Typography>
+                      sx={{ textDecoration: 'line-through' }}
+                    >
+                      {formatPrice(originalPrice)}
+                    </Typography>
                     <Chip 
                       label={`-${discountPercentage}%`} 
                       color="error" 
-                        size="small"
+                      size="small"
                       sx={{ fontWeight: 'bold', height: 20 }}
-                      />
-                    </Box>
-                  )}
-                </Box>
+                    />
+                  </Box>
+                )}
+              </Box>
 
-                {/* Product Description */}
-                <Box sx={{ mb: 3 }}>
+              {/* Product Description */}
+              <Box sx={{ mb: 3 }}>
                 <Typography variant="subtitle2" fontWeight="medium" gutterBottom>
-                    Mô tả sản phẩm:
-                  </Typography>
+                  Mô tả sản phẩm:
+                </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ 
                   mb: 2,
                   display: '-webkit-box',
@@ -527,10 +568,47 @@ const ProductCard = ({ product }) => {
                   {product.description || 
                     `CPU AMD Ryzen 9 7950X (16 nhân: 32 luồng, 5.7GHz Boost, 4.5 GHz, 64MB Cache) là bộ vi xử lý của AMD đưa trên kiến trúc Zen 4. Với 16 nhân và 32 luồng, đây là CPU mạnh mẽ cho công việc đa luồng như render và làm game. Phiên bản mới nhất của AMD.`
                   }
-                  </Typography>
-                  </Box>
+                </Typography>
+              </Box>
 
               <Divider sx={{ my: 2 }} />
+
+              {/* Variant Information */}
+              {product.variants && product.variants.length > 0 && (
+                <Box sx={{ mb: 3 }}>
+                  <Typography variant="subtitle2" fontWeight="medium" mb={1}>
+                    Cấu hình / Phiên bản:
+                  </Typography>
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                    {product.variants.map((variant) => (
+                      <Chip
+                        key={variant._id || variant.name}
+                        label={`${variant.name} - ${formatPrice(variant.price)}`}
+                        variant={selectedVariant === variant ? "filled" : "outlined"}
+                        color={selectedVariant === variant ? "primary" : "default"}
+                        size="small"
+                        onClick={() => handleVariantSelect(variant)}
+                        clickable
+                        sx={{ 
+                          borderRadius: 1,
+                          py: 0.5,
+                          cursor: 'pointer'
+                        }}
+                      />
+                    ))}
+                  </Box>
+                  {selectedVariant && selectedVariant.stock <= 0 && (
+                    <Typography variant="body2" color="error.main" sx={{ mt: 1 }}>
+                      Phiên bản này hiện đã hết hàng
+                    </Typography>
+                  )}
+                  {selectedVariant && selectedVariant.stock > 0 && (
+                    <Typography variant="body2" color="success.main" sx={{ mt: 1 }}>
+                      Còn {selectedVariant.stock} sản phẩm
+                    </Typography>
+                  )}
+                </Box>
+              )}
 
               {/* Quantity Selector - SIMPLIFIED */}
               <Box sx={{ mb: 3 }}>
@@ -582,7 +660,7 @@ const ProductCard = ({ product }) => {
                     fullWidth
                     startIcon={<CartIcon />}
                     onClick={() => handleAddToCart(quantity)}
-                    disabled={stock <= 0 || quantity < 1}
+                    disabled={!selectedVariant || selectedVariant.stock <= 0 || quantity < 1}
                     sx={{ 
                       fontWeight: 600, 
                       textTransform: 'none',
@@ -601,15 +679,15 @@ const ProductCard = ({ product }) => {
                     variant="contained"
                     color="primary"
                     fullWidth
-                    onClick={() => handlePayNow(quantity)}
-                    disabled={stock <= 0 || quantity < 1}
+                    component={Link}
+                    to={`/product/${product._id}`}
                     sx={{ 
                       fontWeight: 600, 
                       textTransform: 'none',
                       py: 1
                     }}
                   >
-                    Mua ngay
+                    Xem chi tiết
                   </Button>
                 </Grid>
               </Grid>

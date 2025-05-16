@@ -29,7 +29,8 @@ import {
   Favorite as FavoriteIcon,
   Share as ShareIcon
 } from '@mui/icons-material';
-import { productsApi } from '../services/api';
+import { productsApi, cartApi } from '../services/api';
+import { useCart } from '../context/CartContext';
 
 // Format currency to VND
 const formatPrice = (price) => {
@@ -47,6 +48,7 @@ const ProductDetail = () => {
   const navigate = useNavigate();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+  const { addToCart, showNotification } = useCart();
   
   // State
   const [product, setProduct] = useState(null);
@@ -109,25 +111,55 @@ const ProductDetail = () => {
   };
   
   // Add to cart functionality
-  const handleAddToCart = () => {
-    if (!selectedVariant) return;
+  const handleAddToCart = async () => {
+    // Kiểm tra sản phẩm và biến thể đã được chọn
+    if (!product || !product._id) {
+      showNotification('Không thể tìm thấy thông tin sản phẩm', 'error');
+      return;
+    }
     
-    console.log('Adding to cart:', {
-      productId: product._id,
-      variantId: selectedVariant._id,
-      name: product.name,
-      price: selectedVariant.price,
-      quantity: 1
-    });
+    if (!selectedVariant || !selectedVariant._id) {
+      showNotification('Vui lòng chọn phiên bản sản phẩm', 'warning');
+      return;
+    }
     
-    // We'll implement actual cart functionality later
-    // For now, just log the action
+    // Kiểm tra tồn kho
+    if (selectedVariant.stock <= 0) {
+      showNotification('Sản phẩm đã hết hàng', 'error');
+      return;
+    }
+    
+    // Sử dụng context để thêm vào giỏ hàng
+    const result = await addToCart(product._id, selectedVariant._id, 1);
+    
+    // Notification is handled by CartContext
+    return result;
   };
   
   // Buy now functionality
-  const handleBuyNow = () => {
-    handleAddToCart();
-    navigate('/cart');
+  const handleBuyNow = async () => {
+    // Instead of using the return value from handleAddToCart,
+    // duplicate the checks to ensure proper notification handling
+    if (!product || !product._id) {
+      showNotification('Không thể tìm thấy thông tin sản phẩm', 'error');
+      return;
+    }
+    
+    if (!selectedVariant || !selectedVariant._id) {
+      showNotification('Vui lòng chọn phiên bản sản phẩm', 'warning');
+      return;
+    }
+    
+    if (selectedVariant.stock <= 0) {
+      showNotification('Sản phẩm đã hết hàng', 'error');
+      return;
+    }
+    
+    // Add to cart and navigate if successful
+    const result = await addToCart(product._id, selectedVariant._id, 1);
+    if (result && result.success) {
+      navigate('/cart');
+    }
   };
   
   if (loading) {

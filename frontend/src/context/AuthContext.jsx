@@ -14,6 +14,7 @@ export const AuthProvider = ({ children }) => {
   const [currentUser, setCurrentUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   // Check if user is logged in on page load
   useEffect(() => {
@@ -22,8 +23,12 @@ export const AuthProvider = ({ children }) => {
       if (token) {
         try {
           const response = await authApi.getCurrentUser();
+          console.log('Auth check response:', response);
+          // Ensure we're setting the user data correctly
           setCurrentUser(response.data);
           setIsAuthenticated(true);
+          // Check if user is admin
+          setIsAdmin(response.data?.role === 'admin');
         } catch (error) {
           // Handle token expiration or invalid token
           console.error('Auth check failed:', error);
@@ -43,8 +48,12 @@ export const AuthProvider = ({ children }) => {
     
     // Get user details
     const userResponse = await authApi.getCurrentUser();
+    console.log('User data after login:', userResponse.data);
+    // Ensure we set the complete user object including addresses
     setCurrentUser(userResponse.data);
     setIsAuthenticated(true);
+    // Check if user is admin
+    setIsAdmin(userResponse.data?.role === 'admin');
     
     return response;
   };
@@ -54,6 +63,7 @@ export const AuthProvider = ({ children }) => {
     localStorage.removeItem('token');
     setCurrentUser(null);
     setIsAuthenticated(false);
+    setIsAdmin(false);
   };
 
   // Register function
@@ -66,6 +76,7 @@ export const AuthProvider = ({ children }) => {
   const value = {
     currentUser,
     isAuthenticated,
+    isAdmin,
     loading,
     login,
     logout,

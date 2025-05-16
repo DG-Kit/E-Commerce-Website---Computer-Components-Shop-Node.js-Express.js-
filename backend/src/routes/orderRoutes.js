@@ -19,6 +19,13 @@ router.post('/', authenticate, orderController.createOrder);
 router.get('/', authenticate, orderController.getUserOrders);
 
 /**
+ * @route   GET /api/orders/user
+ * @desc    Lấy tất cả đơn hàng của người dùng hiện tại (với phân trang)
+ * @access  Private
+ */
+router.get('/user', authenticate, orderController.getUserOrders);
+
+/**
  * @route   GET /api/orders/:orderId
  * @desc    Lấy chi tiết một đơn hàng
  * @access  Private

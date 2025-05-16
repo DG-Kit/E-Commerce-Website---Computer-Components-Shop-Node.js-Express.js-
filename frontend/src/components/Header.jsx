@@ -57,6 +57,7 @@ import { styled } from '@mui/material/styles';
 import { categoriesApi } from '../services/api';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useCart } from '../context/CartContext';
 
 const StyledInputBase = styled(InputBase)(({ theme }) => ({
   color: 'inherit',
@@ -147,6 +148,7 @@ const getCategoryIcon = (category) => {
 
 const Header = () => {
   const { currentUser, isAuthenticated, logout } = useAuth();
+  const { cartItems, getCartCount } = useCart();
   const navigate = useNavigate();
   
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -156,10 +158,16 @@ const Header = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [hoveredCategory, setHoveredCategory] = useState(null);
+  const [cartCount, setCartCount] = useState(0);
   
   // User menu state
   const [userMenuAnchorEl, setUserMenuAnchorEl] = useState(null);
   const userMenuOpen = Boolean(userMenuAnchorEl);
+
+  // Update cart count when cartItems changes
+  useEffect(() => {
+    setCartCount(getCartCount());
+  }, [cartItems, getCartCount]);
 
   // Fetch categories from API
   useEffect(() => {
@@ -217,6 +225,15 @@ const Header = () => {
     logout();
     handleUserMenuClose();
     navigate('/');
+  };
+
+  // Cart button click handler
+  const handleCartClick = () => {
+    if (isAuthenticated) {
+      navigate('/cart');
+    } else {
+      navigate('/login', { state: { from: '/cart' } });
+    }
   };
 
   const renderUserSection = () => {
@@ -300,6 +317,24 @@ const Header = () => {
     );
   };
 
+  // Render cart button
+  const renderCartButton = () => (
+    <IconButton 
+      color="inherit" 
+      sx={{ ml: 1 }}
+      onClick={handleCartClick}
+      aria-label={`Giỏ hàng (${cartCount} sản phẩm)`}
+    >
+      <Badge 
+        badgeContent={cartCount} 
+        color="primary"
+        showZero={false}
+      >
+        <ShoppingCartIcon />
+      </Badge>
+    </IconButton>
+  );
+
   return (
     <>
       {/* Top bar */}
@@ -338,34 +373,56 @@ const Header = () => {
           <Container maxWidth="lg" sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             {/* Logo area */}
             <Box sx={{ display: 'flex', alignItems: 'center' }}>
-              <IconButton 
-                edge="start" 
-                color="inherit" 
+              {/* Mobile Menu Button */}
+              <IconButton
+                size="large"
+                edge="start"
+                color="inherit"
                 aria-label="menu"
                 onClick={toggleMobileMenu}
-                sx={{ display: { md: 'none' }, mr: 1 }}
+                sx={{ mr: 1, display: { xs: 'flex', md: 'none' } }}
               >
                 <MenuIcon />
               </IconButton>
-              <Link to="/" style={{ textDecoration: 'none', color: 'inherit', display: 'flex', alignItems: 'center' }}>
-                <img src="/images/logo-transparent.png" alt="K-Store Logo" style={{ height: 100, width: 120 }} />
-                <Typography 
-                  variant="h6" 
-                  component="div"
-                  sx={{ 
-                    fontWeight: 700, 
-                    color: '#1976d2',
-                    display: { xs: 'none', sm: 'block' },
-                    ml: 1
+
+              {/* Logo */}
+              <Box
+                component={Link}
+                to="/"
+                sx={{
+                  mr: 2,
+                  display: 'flex',
+                  alignItems: 'center',
+                  textDecoration: 'none',
+                }}
+              >
+                <Box
+                  component="img"
+                  src="/images/logo-transparent.png"
+                  alt="Computer Shop Logo"
+                  sx={{
+                    height: { xs: '100px', md: '100px' },
+                    mr: 1,
+                  }}
+                />
+                <Typography
+                  variant="h6"
+                  noWrap
+                  sx={{
+                    display: { xs: 'none', sm: 'flex' },
+                    fontFamily: 'monospace',
+                    fontWeight: 700,
+                    color: 'primary.main',
+                    textDecoration: 'none',
                   }}
                 >
                 </Typography>
-              </Link>
-          </Box>
+              </Box>
+            </Box>
 
             {/* Search */}
-            <Box 
-              sx={{ 
+            <Box
+              sx={{
                 display: { xs: mobileSearchOpen ? 'flex' : 'none', md: 'flex' }, 
                 flexGrow: 1,
                 position: { xs: 'absolute', md: 'static' },
@@ -378,55 +435,59 @@ const Header = () => {
                 boxShadow: { xs: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', md: 'none' }
               }}
             >
-              <Paper
+              {/* Search Bar */}
+              <Box
                 component="form"
-                sx={{ 
-                  p: '2px 4px', 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  width: '100%',
-                  border: '1px solid #e0e0e0',
-                  boxShadow: 'none'
+                sx={{
+                  flexGrow: 1,
+                  mx: 2,
+                  display: { xs: 'none', sm: 'flex' },
+                  backgroundColor: '#f1f5f9',
+                  borderRadius: 1,
                 }}
               >
                 <StyledInputBase
                   placeholder="Tìm kiếm sản phẩm..."
                   inputProps={{ 'aria-label': 'search' }}
                 />
-                <IconButton type="submit" sx={{ p: '10px' }} aria-label="search">
+                <IconButton type="submit" sx={{ p: '8px' }} aria-label="search">
                   <SearchIcon />
-            </IconButton>
-              </Paper>
+                </IconButton>
+              </Box>
             </Box>
-            
+
             {/* Icons */}
             <Box sx={{ display: 'flex', alignItems: 'center' }}>
               {/* Search icon for mobile */}
-              <IconButton 
+              <IconButton
                 size="large" 
                 color="inherit"
                 onClick={toggleMobileSearch}
                 sx={{ display: { md: 'none' } }}
               >
                 <SearchIcon />
-            </IconButton>
-            
-            {/* Cart */}
-            <IconButton 
+              </IconButton>
+
+              {/* Cart */}
+              <IconButton 
                 size="large" 
                 color="inherit"
-                component={Link}
-                to="/cart"
+                onClick={handleCartClick}
                 sx={{ ml: { xs: 0, md: 1 } }}
+                aria-label={`Giỏ hàng (${cartCount} sản phẩm)`}
               >
-                <Badge badgeContent={3} color="primary">
+                <Badge 
+                  badgeContent={cartCount} 
+                  color="primary"
+                  showZero={false}
+                >
                   <ShoppingCartIcon />
                 </Badge>
-            </IconButton>
+              </IconButton>
               
               {/* User */}
               {renderUserSection()}
-        
+          
               {/* Build PC button */}
               <Button
                 variant="contained"

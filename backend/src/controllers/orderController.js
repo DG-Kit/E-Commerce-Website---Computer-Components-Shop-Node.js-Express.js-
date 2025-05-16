@@ -325,26 +325,79 @@ const createOrder = async (req, res) => {
 };
 
 /**
- * Lấy tất cả đơn hàng của người dùng hiện tại
+ * Lấy danh sách đơn hàng của người dùng hiện tại
  * @param {Object} req Request
  * @param {Object} res Response
  * @returns {Object} Response
  */
 const getUserOrders = async (req, res) => {
   try {
+    // Debug request info
+    console.log('GET /orders/user request:', {
+      userId: req.user?.id,
+      query: req.query,
+      headers: req.headers
+    });
+    
     const userId = req.user.id;
-    const orders = await Order.find({ userId }).sort({ createdAt: -1 });
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+    
+    // Parse sort parameter (e.g. 'createdAt:desc')
+    let sortOption = { createdAt: -1 }; // Default sort
+    if (req.query.sort) {
+      const [field, order] = req.query.sort.split(':');
+      sortOption = { [field]: order === 'desc' ? -1 : 1 };
+    }
+    
+    // Debug sort options
+    console.log('Sort options:', sortOption);
+    
+    // Count total orders for pagination
+    const totalOrders = await Order.countDocuments({ userId });
+    console.log('Total orders found:', totalOrders);
+    
+    // Get paginated orders
+    const orders = await Order.find({ userId })
+      .sort(sortOption)
+      .skip(skip)
+      .limit(limit);
+    
+    console.log(`Fetched ${orders.length} orders for page ${page}, limit ${limit}`);
+      
+    // Calculate total pages
+    const totalPages = Math.ceil(totalOrders / limit);
 
     return res.status(200).json({
       success: true,
       message: 'Lấy danh sách đơn hàng thành công',
-      data: orders
+      data: {
+        orders: orders,
+        pagination: {
+          total: totalOrders,
+          page: page,
+          limit: limit,
+          totalPages: totalPages
+        }
+      }
     });
   } catch (error) {
     console.error('Lỗi lấy danh sách đơn hàng:', error);
+    console.error('Stack trace:', error.stack);
+    
+    // Check if it's an authentication error
+    if (error.name === 'TokenExpiredError' || error.name === 'JsonWebTokenError') {
+      return res.status(401).json({
+        success: false,
+        message: 'Phiên đăng nhập đã hết hạn hoặc không hợp lệ'
+      });
+    }
+    
     return res.status(500).json({
       success: false,
-      message: 'Đã có lỗi xảy ra khi lấy danh sách đơn hàng'
+      message: 'Đã có lỗi xảy ra khi lấy danh sách đơn hàng',
+      error: error.message
     });
   }
 };

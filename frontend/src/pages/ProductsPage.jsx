@@ -856,6 +856,13 @@ const ProductsPage = () => {
         </Box>
       )}
       
+      {/* Products count */}
+      <Box sx={{ mb: 2 }}>
+        <Typography variant="body2">
+          Tìm thấy <strong>{products.length > 0 ? `${(page - 1) * 10 + 1}-${Math.min(page * 10, (totalPages - 1) * 10 + products.length)} sản phẩm` : '0 sản phẩm'}</strong>
+        </Typography>
+      </Box>
+      
       {/* Product Grid */}
           {loading ? (
             <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
@@ -864,7 +871,7 @@ const ProductsPage = () => {
           ) : products.length > 0 ? (
             <Grid container spacing={2}>
               {products.map((product) => (
-                <Grid item xs={12} sm={6} md={3} lg={3} key={product._id}>
+            <Grid item xs={6} sm={6} md={3} lg={3} xl={3} key={product._id}>
                   <ProductCard product={product} />
                 </Grid>
               ))}
