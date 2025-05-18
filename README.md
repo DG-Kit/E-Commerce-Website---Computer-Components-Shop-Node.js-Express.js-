@@ -70,7 +70,6 @@ Website thương mại điện tử cho phép:
 ### 🛢️ Database
 [![MongoDB](https://img.shields.io/badge/MongoDB-47A248?logo=mongodb&logoColor=white)](https://www.mongodb.com/)
 
-[![MySQL](https://img.shields.io/badge/MySQL-4479A1?logo=mysql&logoColor=white)](https://www.mysql.com/)
 
 ### 🔐 Authentication
 [![JWT](https://img.shields.io/badge/JWT-000000?logo=jsonwebtokens&logoColor=white)](https://jwt.io/)
@@ -78,13 +77,10 @@ Website thương mại điện tử cho phép:
 [![OAuth 2.0](https://img.shields.io/badge/OAuth%202.0-3C5A99?logo=oauth&logoColor=white)](https://oauth.net/2/)
 
 ### 🎨 UI/UX
-[![Bootstrap](https://img.shields.io/badge/Bootstrap-7952B3?logo=bootstrap&logoColor=white)](https://getbootstrap.com/)
-
 [![Tailwind CSS](https://img.shields.io/badge/TailwindCSS-06B6D4?logo=tailwindcss&logoColor=white)](https://tailwindcss.com/)
 
 [![React](https://img.shields.io/badge/React-20232A?logo=react&logoColor=61DAFB)](https://reactjs.org/)
 
-[![EJS](https://img.shields.io/badge/EJS-0277BD?logoColor=white)](https://ejs.co/)
 
 ### 📦 Libs khác
 [![bcrypt](https://img.shields.io/badge/Bcrypt-0079A1?logo=npm&logoColor=white)](https://github.com/kelektiv/node.bcrypt.js)
@@ -93,24 +89,8 @@ Website thương mại điện tử cho phép:
 
 [![nodemailer](https://img.shields.io/badge/Nodemailer-EA4335?logo=gmail&logoColor=white)](https://nodemailer.com/)
 
-[![Socket.IO](https://img.shields.io/badge/Socket.IO-010101?logo=socket.io&logoColor=white)](https://socket.io/)
-
 [![dotenv](https://img.shields.io/badge/dotenv-8DD6F9?logo=npm&logoColor=black)](https://github.com/motdotla/dotenv)
 
-
----
-
-## 🚀 Triển khai
-
-Chọn 1 trong 2 cách:
-1. **Hosting công khai:** Heroku, Vercel, AWS, v.v.  
-   Gửi kèm:
-   - URL truy cập
-   - Tài khoản đăng nhập Admin
-   
-2. **Docker Compose:** 
-   - Có `docker-compose.yml`
-   - Cài đặt qua `docker compose up -d`
 
 ---
 
@@ -129,46 +109,15 @@ cp .env.example .env.v.
 
 # Khởi động
 npm run dev
-```
----
 
-## 🧪 Các tính năng triển khai thêm (Bonus ✅)
-
-- CI/CD pipeline (GitHub Actions / GitLab CI / Jenkins)
-- Kiến trúc Microservices + RabbitMQ / Redis
-- Chatbot AI / tìm kiếm ảnh / phân tích cảm xúc
-- ElasticSearch cho tìm kiếm nâng cao
-
----
-
-## 🎥 Demo & báo cáo
-
-- **demo.mp4:** Video trình chiếu đầy đủ tính năng
-- **Rubrik.docx:** Bảng tự đánh giá nhóm
-- **source/**: Toàn bộ mã nguồn (frontend/backend hoặc Docker)
-- **README.md**: Hướng dẫn cài đặt và triển khai
-
----
-
-## 🔐 Thông tin đăng nhập (nếu dùng)
-
-```text
-Admin:
-Username: 
-Password: 
-
-User demo:
-Email: 
-Password: 
-```
 
 ---
 
 ## 🧑‍💻 Nhóm thực hiện
 
-| Họ Tên | MSSV | Vai trò |
-|--------|------|----------|
-| Đặng Lữ Anh Kiệt | 521H0090 | Fullstack |
+| Họ Tên | MSSV |
+|--------|------|
+| Đặng Lữ Anh Kiệt | 521H0090 |
 
 
 ---
