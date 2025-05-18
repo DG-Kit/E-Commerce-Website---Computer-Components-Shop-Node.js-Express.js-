@@ -25,7 +25,6 @@ import {
   TableCell,
   Tab,
   Tabs,
-  Checkbox,
   Button,
 } from '@mui/material';
 import {
@@ -67,6 +66,69 @@ ChartJS.register(
   RadialLinearScale
 );
 
+// Helper component for Sparkline Chart
+const SparklineChart = ({ data, borderColor, backgroundColor }) => {
+  if (!data || data.length === 0) {
+    // Render a placeholder or empty state if data is not available
+    return <Box sx={{ height: 60, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Typography variant="caption" color="textSecondary">No data</Typography></Box>;
+  }
+
+  const chartData = {
+    labels: data.map((_, i) => `DataPoint ${i + 1}`), // Generic labels
+    datasets: [{
+      data: data,
+      borderColor: borderColor || '#3b82f6',
+      backgroundColor: backgroundColor || 'rgba(59, 130, 246, 0.1)',
+      borderWidth: 2,
+      tension: 0.4,
+      pointRadius: 0,
+      fill: true,
+    }]
+  };
+
+  const options = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: { legend: { display: false } },
+    scales: {
+      x: { display: false },
+      y: { display: false }
+    },
+    elements: { point: { radius: 0 } },
+    animation: false, // Optional: disable animation for sparklines
+  };
+
+  return (
+    <Box sx={{ height: 60 }}>
+      <Line data={chartData} options={options} />
+    </Box>
+  );
+};
+
+// Helper component for Percentage Change Chip
+const PercentageChangeChip = ({ value }) => {
+  if (typeof value !== 'number') {
+    return <Chip label="N/A" size="small" sx={{ mr: 1, fontSize: '0.75rem' }} />;
+  }
+
+  const isPositive = value >= 0;
+  const chipLabel = `${isPositive ? '+' : ''}${value.toFixed(2)}%`;
+  
+  return (
+    <Chip 
+      label={chipLabel} 
+      size="small" 
+      sx={{ 
+        bgcolor: isPositive ? '#ECFDF5' : '#FEF2F2', 
+        color: isPositive ? '#10b981' : '#ef4444', 
+        fontWeight: 500,
+        fontSize: '0.75rem',
+        mr: 1
+      }}
+    />
+  );
+};
+
 const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -80,11 +142,16 @@ const Dashboard = () => {
       cancelled: 0
     },
     users: 0,
-    revenue: 0
+    revenue: 0,
+    currentMonthRevenue: 0,
+    revenueChange: null,
+    revenueSparkline: [],
+    currentMonthOrders: 0,
+    ordersChange: null,
+    ordersSparkline: []
   });
   const [recentOrders, setRecentOrders] = useState([]);
-  const [bestSellers, setBestSellers] = useState([]);
-  const [timeRange, setTimeRange] = useState('week');
+  const [timeRange, setTimeRange] = useState('week1');
   const [revenueData, setRevenueData] = useState({
     labels: [],
     datasets: []
@@ -94,7 +161,17 @@ const Dashboard = () => {
     datasets: []
   });
   const [revenueLoading, setRevenueLoading] = useState(false);
-  const [bestSellerTimeFrame, setBestSellerTimeFrame] = useState('all');
+  const [orderStatusChartData, setOrderStatusChartData] = useState({
+    labels: [],
+    datasets: []
+  });
+  const [orderStatusLoading, setOrderStatusLoading] = useState(false);
+
+  // Get current month and year for display
+  const currentDate = new Date();
+  const currentMonth = currentDate.getMonth() + 1; // JavaScript months are 0-indexed
+  const currentYear = currentDate.getFullYear();
+  const monthYearDisplay = `(Tháng ${currentMonth} năm ${currentYear})`;
 
   // Revenue chart options (line chart)
   const revenueOptions = {
@@ -175,7 +252,95 @@ const Dashboard = () => {
   };
 
   // Order status chart data
-  const orderStatusData = {
+  const orderStatusOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        position: 'right',
+      },
+      tooltip: {
+        callbacks: {
+          label: function(context) {
+            const label = context.label || '';
+            const value = context.parsed || 0;
+            const dataset = context.dataset;
+            const total = dataset.data.reduce((acc, data) => acc + data, 0);
+            const percentage = Math.round((value / total) * 100);
+            return `${label}: ${value} đơn (${percentage}%)`;
+          }
+        }
+      },
+      title: {
+        display: true,
+        text: 'Phân bố trạng thái đơn hàng',
+        position: 'top',
+        padding: {
+          top: 10,
+          bottom: 20
+        },
+        font: {
+          size: 16,
+          weight: 'bold'
+        }
+      }
+    },
+    cutout: '65%',
+    animation: {
+      animateScale: true,
+      animateRotate: true
+    }
+  };
+
+  // Fetch order status data for chart
+  const fetchOrderStatusData = async () => {
+    try {
+      setOrderStatusLoading(true);
+      
+      // Use the existing stats or fetch dedicated data from API
+      const response = await adminApi.getAllOrders({ limit: 1000 });
+      
+      if (response.data?.data?.orders) {
+        const orders = response.data.data.orders;
+        
+        // Count orders by status
+        const statusCounts = {};
+        orders.forEach(order => {
+          const status = order.status;
+          statusCounts[status] = (statusCounts[status] || 0) + 1;
+        });
+        
+        // Prepare chart data
+        setOrderStatusChartData({
+          labels: ['Chờ xác nhận', 'Đang xử lý', 'Đã giao hàng', 'Đã hủy'],
+          datasets: [
+            {
+              label: 'Số đơn hàng',
+              data: [
+                statusCounts['PENDING'] || 0,
+                statusCounts['PROCESSING'] || 0,
+                statusCounts['DELIVERED'] || 0,
+                statusCounts['CANCELLED'] || 0
+              ],
+              backgroundColor: [
+                '#f59e0b', // amber for pending
+                '#3b82f6', // blue for processing
+                '#10b981', // green for delivered
+                '#ef4444', // red for cancelled
+              ],
+              borderColor: [
+                '#fff',
+                '#fff',
+                '#fff',
+                '#fff',
+              ],
+              borderWidth: 2,
+            },
+          ],
+        });
+      } else {
+        // Fallback to using stats if API doesn't return expected data
+        setOrderStatusChartData({
     labels: ['Chờ xác nhận', 'Đang xử lý', 'Đã giao hàng', 'Đã hủy'],
     datasets: [
       {
@@ -201,71 +366,40 @@ const Dashboard = () => {
         borderWidth: 2,
       },
     ],
-  };
-
-  const orderStatusOptions = {
-    responsive: true,
-    plugins: {
-      legend: {
-        position: 'right',
-      },
-    },
-    cutout: '60%',
-  };
-
-  // Best selling products chart data
-  const prepareBestSellerChartData = () => {
-    if (!bestSellers || bestSellers.length === 0) return null;
-    
-    // Sort products by sold count in descending order
-    const sortedProducts = [...bestSellers].sort((a, b) => b.sold - a.sold);
-    const top5Products = sortedProducts.slice(0, 5); // Take top 5
-    
-    return {
-      labels: top5Products.map(p => p.name),
+        });
+      }
+    } catch (error) {
+      console.error('Failed to fetch order status data:', error);
+      // Set fallback data on error
+      setOrderStatusChartData({
+        labels: ['Chờ xác nhận', 'Đang xử lý', 'Đã giao hàng', 'Đã hủy'],
       datasets: [
         {
-          label: 'Đã bán',
-          data: top5Products.map(p => p.sold),
+            label: 'Số đơn hàng',
+            data: [
+              stats.orders.pending, 
+              stats.orders.processing, 
+              stats.orders.delivered, 
+              stats.orders.cancelled
+            ],
           backgroundColor: [
-            'rgba(59, 130, 246, 0.8)', // Blue
-            'rgba(59, 130, 246, 0.7)',
-            'rgba(59, 130, 246, 0.6)',
-            'rgba(59, 130, 246, 0.5)',
-            'rgba(59, 130, 246, 0.4)',
+              '#f59e0b', // amber for pending
+              '#3b82f6', // blue for processing
+              '#10b981', // green for delivered
+              '#ef4444', // red for cancelled
           ],
           borderColor: [
-            'rgba(59, 130, 246, 1)',
-            'rgba(59, 130, 246, 1)',
-            'rgba(59, 130, 246, 1)',
-            'rgba(59, 130, 246, 1)',
-            'rgba(59, 130, 246, 1)',
-          ],
-          borderWidth: 1,
-        }
-      ]
-    };
-  };
-
-  const bestSellerChartOptions = {
-    indexAxis: 'y', // Horizontal bar chart
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: {
-        display: false,
-      },
-    },
-    scales: {
-      x: {
-        title: {
-          display: true,
-          text: 'Số lượng đã bán'
-        },
-        ticks: {
-          precision: 0
-        }
-      }
+              '#fff',
+              '#fff',
+              '#fff',
+              '#fff',
+            ],
+            borderWidth: 2,
+          },
+        ],
+      });
+    } finally {
+      setOrderStatusLoading(false);
     }
   };
 
@@ -388,10 +522,9 @@ const Dashboard = () => {
       console.log("Auth Token:", localStorage.getItem('token'));
       
       // Fetch all dashboard data in parallel
-      const [statsRes, ordersRes, productsRes] = await Promise.all([
+      const [statsRes, ordersRes] = await Promise.all([
         adminApi.getDashboardStats(),
-        adminApi.getRecentOrders(5),
-        adminApi.getBestSellingProducts(5, bestSellerTimeFrame)
+        adminApi.getRecentOrders(5)
       ]);
       
       if (statsRes.data?.data) {
@@ -402,97 +535,11 @@ const Dashboard = () => {
         setRecentOrders(ordersRes.data.data);
       }
       
-      console.log("Best sellers API response:", productsRes);
-      
-      if (productsRes.data?.data && productsRes.data.data.length > 0) {
-        setBestSellers(productsRes.data.data);
-      } else {
-        // If no data from API, use test data
-        console.log("Using test data for best sellers");
-        setBestSellers([
-          {
-            id: "1",
-            name: "AMD Ryzen 5 5600X",
-            image: "https://m.media-amazon.com/images/I/61vGQNUEsGL._AC_SL1384_.jpg",
-            sold: 356,
-            margin: 1500000,
-            profitMargin: 28,
-            orderCount: 219,
-            category: { name: "CPU" },
-            stockStatus: "In Stock",
-            vendors: [
-              { name: "AMD", avatar: "https://ui-avatars.com/api/?name=AMD&background=random" },
-              { name: "ASRock", avatar: "https://ui-avatars.com/api/?name=ASRock&background=random" },
-              { name: "MSI", avatar: "https://ui-avatars.com/api/?name=MSI&background=random" }
-            ]
-          },
-          {
-            id: "2",
-            name: "NVIDIA GeForce RTX 3080",
-            image: "https://m.media-amazon.com/images/I/61wbV8oqAbL._AC_SL1500_.jpg",
-            sold: 289,
-            margin: 3200000,
-            profitMargin: 35,
-            orderCount: 184,
-            category: { name: "GPU" },
-            stockStatus: "Low Stock",
-            vendors: [
-              { name: "NVIDIA", avatar: "https://ui-avatars.com/api/?name=NVIDIA&background=random" },
-              { name: "ASUS", avatar: "https://ui-avatars.com/api/?name=ASUS&background=random" },
-              { name: "Gigabyte", avatar: "https://ui-avatars.com/api/?name=Gigabyte&background=random" },
-              { name: "MSI", avatar: "https://ui-avatars.com/api/?name=MSI&background=random" }
-            ]
-          },
-          {
-            id: "3",
-            name: "Samsung 970 EVO Plus 1TB SSD",
-            image: "https://m.media-amazon.com/images/I/61TUx-15+sL._AC_SL1500_.jpg",
-            sold: 412,
-            margin: 850000,
-            profitMargin: 42,
-            orderCount: 357,
-            category: { name: "Storage" },
-            stockStatus: "In Stock",
-            vendors: [
-              { name: "Samsung", avatar: "https://ui-avatars.com/api/?name=Samsung&background=random" }
-            ]
-          },
-          {
-            id: "4", 
-            name: "Corsair Vengeance RGB Pro 32GB RAM",
-            image: "https://m.media-amazon.com/images/I/61GpY38PAWL._AC_SL1500_.jpg",
-            sold: 267,
-            margin: 750000,
-            profitMargin: 25,
-            orderCount: 241,
-            category: { name: "Memory" },
-            stockStatus: "In Stock",
-            vendors: [
-              { name: "Corsair", avatar: "https://ui-avatars.com/api/?name=Corsair&background=random" },
-              { name: "Amazon", avatar: "https://ui-avatars.com/api/?name=Amazon&background=random" }
-            ]
-          },
-          {
-            id: "5",
-            name: "ASUS ROG Strix B550-F Gaming",
-            image: "https://m.media-amazon.com/images/I/81x069mwcbL._AC_SL1500_.jpg",
-            sold: 187,
-            margin: 980000,
-            profitMargin: 32,
-            orderCount: 165,
-            category: { name: "Motherboard" },
-            stockStatus: "Out of Stock",
-            vendors: [
-              { name: "ASUS", avatar: "https://ui-avatars.com/api/?name=ASUS&background=random" },
-              { name: "Newegg", avatar: "https://ui-avatars.com/api/?name=Newegg&background=random" },
-              { name: "BestBuy", avatar: "https://ui-avatars.com/api/?name=BestBuy&background=random" }
-            ]
-          }
-        ]);
-      }
-      
       // Fetch revenue data for the current time range
       await fetchRevenueData(timeRange);
+
+      // Fetch order status data for chart
+      await fetchOrderStatusData();
       
     } catch (error) {
       console.error('Failed to fetch dashboard data:', error);
@@ -522,26 +569,6 @@ const Dashboard = () => {
   useEffect(() => {
     fetchRevenueData(timeRange);
   }, [timeRange]);
-
-  // Add effect to refetch best sellers when time frame changes
-  useEffect(() => {
-    const fetchBestSellers = async () => {
-      try {
-        setLoading(true);
-        const response = await adminApi.getBestSellingProducts(5, bestSellerTimeFrame);
-        
-        if (response.data?.data && response.data.data.length > 0) {
-          setBestSellers(response.data.data);
-        }
-      } catch (error) {
-        console.error("Error fetching best sellers:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    
-    fetchBestSellers();
-  }, [bestSellerTimeFrame]);
 
   // Format currency
   const formatCurrency = (amount) => {
@@ -574,10 +601,6 @@ const Dashboard = () => {
     setTimeRange(newValue);
   };
 
-  const handleBestSellerTimeFrameChange = (event, newValue) => {
-    setBestSellerTimeFrame(newValue);
-  };
-
   if (loading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '50vh' }}>
@@ -607,485 +630,324 @@ const Dashboard = () => {
 
       {/* Statistics Cards */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
-        {/* Products */}
-        <Grid item xs={12} sm={6} md={3}>
-          <Card 
-            variant="outlined" 
-            sx={{ 
-              p: 2, 
-              display: 'flex', 
-              flexDirection: 'column',
-              height: '100%',
-              borderRadius: 2,
-              position: 'relative',
-              overflow: 'hidden',
-              boxShadow: '0px 2px 8px rgba(0,0,0,0.05)',
-            }}
-          >
-            <Box 
-              sx={{ 
-                position: 'absolute', 
-                top: -15, 
-                right: -15, 
-                width: 120, 
-                height: 120, 
-                borderRadius: '50%', 
-                bgcolor: 'primary.light', 
-                opacity: 0.2,
-                zIndex: 0
-              }} 
-            />
-            <Box sx={{ position: 'relative', zIndex: 1 }}>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Typography variant="subtitle1" color="text.secondary" gutterBottom fontWeight={500}>
-                  Sản phẩm
+        {/* Left Column with two metric cards */}
+        <Grid item xs={12} md={6}>
+          <Grid container spacing={3} direction="column">
+            {/* Revenue/Profit Card */}
+            <Grid item xs={12}>
+              <Card
+                variant="outlined"
+                sx={{
+                  p: 3,
+                  borderRadius: 2,
+                  boxShadow: '0px 2px 8px rgba(0,0,0,0.05)',
+                }}
+              >
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                  <Typography variant="h6" fontWeight={600} color="text.primary">
+                    Doanh thu tháng
+                  </Typography>
+                  <IconButton size="small">
+                    <MoreIcon fontSize="small" />
+                  </IconButton>
+                </Box>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  Tổng doanh thu đã đạt được
                 </Typography>
-                <Avatar sx={{ bgcolor: '#EFF6FF', color: '#3b82f6' }}>
-                  <ProductsIcon />
-                </Avatar>
-              </Box>
-              <Typography variant="h4" component="div" fontWeight="bold">
-                {stats.products}
-              </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                Tổng số sản phẩm trong cửa hàng
-              </Typography>
-            </Box>
-          </Card>
+                <Typography variant="h3" component="div" fontWeight="bold" sx={{ mb: 1 }}>
+                  {formatCurrency(stats.currentMonthRevenue || stats.revenue || 0)}
+                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
+                  <PercentageChangeChip value={stats.revenueChange} />
+                  <Typography variant="body2" color="text.secondary">so với tháng trước</Typography>
+                </Box>
+                <SparklineChart 
+                  data={stats.revenueSparkline} 
+                  borderColor="#3b82f6" 
+                  backgroundColor="rgba(59, 130, 246, 0.1)" 
+                />
+              </Card>
+            </Grid>
+
+            {/* Orders per visitor Card */}
+            <Grid item xs={12}>
+              <Card
+                variant="outlined"
+                sx={{
+                  p: 3,
+                  borderRadius: 2,
+                  boxShadow: '0px 2px 8px rgba(0,0,0,0.05)',
+                }}
+              >
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                  <Typography variant="h6" fontWeight={600} color="text.primary">
+                    Số đơn đặt hàng
+                  </Typography>
+                  <IconButton size="small">
+                    <MoreIcon fontSize="small" />
+                  </IconButton>
+                </Box>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  Số lượng đơn hàng đã tạo
+                </Typography>
+                <Typography variant="h3" component="div" fontWeight="bold" sx={{ mb: 1 }}>
+                  {stats.currentMonthOrders || stats.orders?.total || 0}
+                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
+                  <PercentageChangeChip value={stats.ordersChange} />
+                  <Typography variant="body2" color="text.secondary">so với tháng trước</Typography>
+                </Box>
+                <SparklineChart 
+                  data={stats.ordersSparkline} 
+                  borderColor="#10b981" 
+                  backgroundColor="rgba(16, 185, 129, 0.1)"
+                />
+              </Card>
+            </Grid>
+          </Grid>
         </Grid>
-        
-        {/* Orders */}
-        <Grid item xs={12} sm={6} md={3}>
+
+        {/* Order Status Chart - Right Column */}
+        <Grid item xs={12} md={6}>
           <Card 
             variant="outlined" 
             sx={{ 
-              p: 2, 
-              display: 'flex', 
-              flexDirection: 'column',
-              height: '100%',
-              borderRadius: 2,
-              position: 'relative',
-              overflow: 'hidden',
-              boxShadow: '0px 2px 8px rgba(0,0,0,0.05)',
+              borderRadius: 2, 
+              boxShadow: '0px 2px 8px rgba(0,0,0,0.05)', 
+              p: 3,
+              height: '100%', // Set to 100% height of the parent Grid
+              display: 'flex',
+              flexDirection: 'column'
             }}
           >
-            <Box 
-              sx={{ 
-                position: 'absolute', 
-                top: -15, 
-                right: -15, 
-                width: 120, 
-                height: 120, 
-                borderRadius: '50%', 
-                bgcolor: 'warning.light', 
-                opacity: 0.2,
-                zIndex: 0
-              }} 
-            />
-            <Box sx={{ position: 'relative', zIndex: 1 }}>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Typography variant="subtitle1" color="text.secondary" gutterBottom fontWeight={500}>
-                  Đơn hàng
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+              <Box>
+                <Typography variant="h6" fontWeight={600}>
+                  Trạng thái đơn hàng
                 </Typography>
-                <Avatar sx={{ bgcolor: '#FFFBEB', color: '#f59e0b' }}>
-                  <OrdersIcon />
-                </Avatar>
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                  Phân bố trạng thái của các đơn hàng hiện tại
+                </Typography>
               </Box>
-              <Typography variant="h4" component="div" fontWeight="bold">
-                {stats.orders.total}
-              </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                {stats.orders.pending} chờ xác nhận, {stats.orders.processing} đang xử lý
-              </Typography>
+              <Button 
+                size="small" 
+                startIcon={<RefreshIcon />} 
+                onClick={fetchOrderStatusData}
+                disabled={orderStatusLoading}
+                sx={{ borderRadius: 2 }}
+              >
+                Làm mới
+              </Button>
             </Box>
-          </Card>
-        </Grid>
-        
-        {/* Users */}
-        <Grid item xs={12} sm={6} md={3}>
-          <Card 
-            variant="outlined" 
-            sx={{ 
-              p: 2, 
-              display: 'flex', 
-              flexDirection: 'column',
-              height: '100%',
-              borderRadius: 2,
-              position: 'relative',
-              overflow: 'hidden',
-              boxShadow: '0px 2px 8px rgba(0,0,0,0.05)',
-            }}
-          >
+            <Divider sx={{ mb: 2 }} />
             <Box 
               sx={{ 
-                position: 'absolute', 
-                top: -15, 
-                right: -15, 
-                width: 120, 
-                height: 120, 
-                borderRadius: '50%', 
-                bgcolor: 'info.light', 
-                opacity: 0.2,
-                zIndex: 0
-              }} 
-            />
-            <Box sx={{ position: 'relative', zIndex: 1 }}>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Typography variant="subtitle1" color="text.secondary" gutterBottom fontWeight={500}>
-                  Người dùng
-                </Typography>
-                <Avatar sx={{ bgcolor: '#EFF6FF', color: '#3b82f6' }}>
-                  <UsersIcon />
-                </Avatar>
-              </Box>
-              <Typography variant="h4" component="div" fontWeight="bold">
-                {stats.users}
-              </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                Tổng số người dùng đã đăng ký
-              </Typography>
-            </Box>
-          </Card>
-        </Grid>
-        
-        {/* Revenue */}
-        <Grid item xs={12} sm={6} md={3}>
-          <Card 
-            variant="outlined" 
-            sx={{ 
-              p: 2, 
-              display: 'flex', 
-              flexDirection: 'column',
-              height: '100%',
-              borderRadius: 2,
-              position: 'relative',
-              overflow: 'hidden',
-              boxShadow: '0px 2px 8px rgba(0,0,0,0.05)',
-            }}
-          >
-            <Box 
-              sx={{ 
-                position: 'absolute', 
-                top: -15, 
-                right: -15, 
-                width: 120, 
-                height: 120, 
-                borderRadius: '50%', 
-                bgcolor: 'success.light', 
-                opacity: 0.2,
-                zIndex: 0
-              }} 
-            />
-            <Box sx={{ position: 'relative', zIndex: 1 }}>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Typography variant="subtitle1" color="text.secondary" gutterBottom fontWeight={500}>
-                  Doanh thu
-                </Typography>
-                <Avatar sx={{ bgcolor: '#ECFDF5', color: '#10b981' }}>
-                  <RevenueIcon />
-                </Avatar>
-              </Box>
-              <Typography variant="h5" component="div" fontWeight="bold">
-                {formatCurrency(stats.revenue)}
-              </Typography>
-              <Box sx={{ display: 'flex', alignItems: 'center', mt: 1 }}>
-                <TrendingUpIcon color="success" fontSize="small" sx={{ mr: 0.5 }} />
-                <Typography variant="body2" color="success.main">
-                  Theo đơn hàng đã giao
-                </Typography>
-              </Box>
+                display: 'flex', 
+                justifyContent: 'center', 
+                alignItems: 'center', 
+                position: 'relative',
+                flexGrow: 1,
+              }}
+            >
+              {orderStatusLoading ? (
+                <Box sx={{ 
+                  position: 'absolute', 
+                  top: 0, 
+                  left: 0, 
+                  right: 0, 
+                  bottom: 0, 
+                  display: 'flex', 
+                  justifyContent: 'center', 
+                  alignItems: 'center',
+                  backgroundColor: 'rgba(255,255,255,0.7)' 
+                }}>
+                  <CircularProgress size={40} />
+                </Box>
+              ) : null}
+              <Grid container spacing={2}>
+                <Grid item xs={12} md={7}>
+                  <Box sx={{ height: '350px', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                    <Doughnut 
+                      data={orderStatusChartData} 
+                      options={orderStatusOptions}
+                    />
+                  </Box>
+                </Grid>
+                <Grid item xs={12} md={5}>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', height: '100%' }}>
+                    <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 600 }}>
+                      Chi tiết đơn hàng
+                    </Typography>
+                    <List dense disablePadding>
+                      <ListItem sx={{ py: 1, px: 0 }}>
+                        <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: '#f59e0b', mr: 1.5 }} />
+                        <ListItemText 
+                          primary="Chờ xác nhận" 
+                          secondary={`${orderStatusChartData.datasets?.[0]?.data?.[0] || 0} đơn`} 
+                          primaryTypographyProps={{ 
+                            variant: 'body2',
+                            fontWeight: 500,
+                          }}
+                          secondaryTypographyProps={{ variant: 'body1', fontWeight: 'bold' }}
+                        />
+                      </ListItem>
+                      <ListItem sx={{ py: 1, px: 0 }}>
+                        <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: '#3b82f6', mr: 1.5 }} />
+                        <ListItemText 
+                          primary="Đang xử lý" 
+                          secondary={`${orderStatusChartData.datasets?.[0]?.data?.[1] || 0} đơn`}
+                          primaryTypographyProps={{ 
+                            variant: 'body2',
+                            fontWeight: 500,
+                          }}
+                          secondaryTypographyProps={{ variant: 'body1', fontWeight: 'bold' }}
+                        />
+                      </ListItem>
+                      <ListItem sx={{ py: 1, px: 0 }}>
+                        <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: '#10b981', mr: 1.5 }} />
+                        <ListItemText 
+                          primary="Đã giao hàng" 
+                          secondary={`${orderStatusChartData.datasets?.[0]?.data?.[2] || 0} đơn`}
+                          primaryTypographyProps={{ 
+                            variant: 'body2',
+                            fontWeight: 500,
+                          }}
+                          secondaryTypographyProps={{ variant: 'body1', fontWeight: 'bold' }}
+                        />
+                      </ListItem>
+                      <ListItem sx={{ py: 1, px: 0 }}>
+                        <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: '#ef4444', mr: 1.5 }} />
+                        <ListItemText 
+                          primary="Đã hủy" 
+                          secondary={`${orderStatusChartData.datasets?.[0]?.data?.[3] || 0} đơn`}
+                          primaryTypographyProps={{ 
+                            variant: 'body2',
+                            fontWeight: 500,
+                          }}
+                          secondaryTypographyProps={{ variant: 'body1', fontWeight: 'bold' }}
+                        />
+                      </ListItem>
+                      <Divider sx={{ my: 1.5 }} />
+                      <ListItem sx={{ py: 1, px: 0 }}>
+                        <ListItemText 
+                          primary="Tổng số đơn hàng" 
+                          secondary={`${orderStatusChartData.datasets?.[0]?.data?.reduce((a, b) => a + b, 0) || 0} đơn`}
+                          primaryTypographyProps={{ 
+                            variant: 'body2',
+                            fontWeight: 500,
+                          }}
+                          secondaryTypographyProps={{ 
+                            variant: 'h6', 
+                            fontWeight: 'bold',
+                            color: 'primary'
+                          }}
+                        />
+                      </ListItem>
+                    </List>
+                  </Box>
+                </Grid>
+              </Grid>
             </Box>
           </Card>
         </Grid>
       </Grid>
 
-      {/* Time Range Selector */}
-      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+      {/* Time Range Selector FOR WEEKLY CHARTS */}
+      <Box sx={{ display: 'flex', justifyContent: 'flex-start', mb: 2, mt: 4 }}>
+        <Typography variant="h6" fontWeight={500} sx={{ mr: 1, alignSelf: 'center' }}>
+          Chọn tuần trong tháng:
+        </Typography>
+        <Typography variant="h6" fontWeight={400} sx={{ mr: 2, alignSelf: 'center', color: 'text.secondary' }}>
+          {monthYearDisplay}
+        </Typography>
         <Tabs
-          value={timeRange}
+          value={timeRange} // This will be 'week1', 'week2', etc.
           onChange={handleTimeRangeChange}
           textColor="primary"
           indicatorColor="primary"
           size="small"
         >
-          <Tab value="week" label="Tuần" />
-          <Tab value="month" label="Tháng" />
-          <Tab value="year" label="Năm" />
+          <Tab value="week1" label="Tuần 1" />
+          <Tab value="week2" label="Tuần 2" />
+          <Tab value="week3" label="Tuần 3" />
+          <Tab value="week4" label="Tuần 4" />
         </Tabs>
       </Box>
 
       {/* Charts */}
       <Grid container spacing={3}>
-        {/* Revenue Chart - Line Chart */}
-        <Grid item xs={12} lg={6}>
-          <Card variant="outlined" sx={{ borderRadius: 2, boxShadow: '0px 2px 8px rgba(0,0,0,0.05)', p: 2 }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-              <Typography variant="h6" fontWeight={600}>
-                Doanh thu
-              </Typography>
-            </Box>
-            <Divider sx={{ mb: 2 }} />
-            <Box sx={{ height: 300, p: 1, position: 'relative' }}>
-              {revenueLoading ? (
-                <Box sx={{ 
-                  position: 'absolute', 
-                  top: 0, 
-                  left: 0, 
-                  right: 0, 
-                  bottom: 0, 
-                  display: 'flex', 
-                  justifyContent: 'center', 
-                  alignItems: 'center',
-                  backgroundColor: 'rgba(255,255,255,0.7)' 
-                }}>
-                  <CircularProgress size={40} />
-                </Box>
-              ) : null}
-              <Line
-                data={revenueData}
-                options={revenueOptions}
-              />
-            </Box>
-          </Card>
-        </Grid>
-
-        {/* Orders Chart - Bar Chart */}
-        <Grid item xs={12} lg={6}>
-          <Card variant="outlined" sx={{ borderRadius: 2, boxShadow: '0px 2px 8px rgba(0,0,0,0.05)', p: 2 }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-              <Typography variant="h6" fontWeight={600}>
-                Đơn hàng
-              </Typography>
-            </Box>
-            <Divider sx={{ mb: 2 }} />
-            <Box sx={{ height: 300, p: 1, position: 'relative' }}>
-              {revenueLoading ? (
-                <Box sx={{ 
-                  position: 'absolute', 
-                  top: 0, 
-                  left: 0, 
-                  right: 0, 
-                  bottom: 0, 
-                  display: 'flex', 
-                  justifyContent: 'center', 
-                  alignItems: 'center',
-                  backgroundColor: 'rgba(255,255,255,0.7)' 
-                }}>
-                  <CircularProgress size={40} />
-                </Box>
-              ) : null}
-              <Bar
-                data={ordersData}
-                options={ordersOptions}
-              />
-            </Box>
-          </Card>
-        </Grid>
-
-        {/* Order Status Chart */}
-        <Grid item xs={12} md={6} lg={4}>
-          <Card variant="outlined" sx={{ borderRadius: 2, boxShadow: '0px 2px 8px rgba(0,0,0,0.05)', p: 2 }}>
-            <Typography variant="h6" fontWeight={600} mb={2}>
-              Trạng thái đơn hàng
-            </Typography>
-            <Divider sx={{ mb: 2 }} />
-            <Box sx={{ height: 300, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-              <Doughnut 
-                data={orderStatusData} 
-                options={orderStatusOptions}
-              />
-            </Box>
-          </Card>
-        </Grid>
-
-        {/* Best Selling Products Chart */}
-        <Grid item xs={12} md={6} lg={8}>
-          <Card variant="outlined" sx={{ borderRadius: 2, boxShadow: '0px 2px 8px rgba(0,0,0,0.05)', p: 2 }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-              <Typography variant="h6" fontWeight={600}>
-                Sản phẩm bán chạy
-              </Typography>
-              <Box>
-                <Tabs
-                  value={bestSellerTimeFrame}
-                  onChange={handleBestSellerTimeFrameChange}
-                  textColor="primary"
-                  indicatorColor="primary"
-                  size="small"
-                >
-                  <Tab value="all" label="Tất cả" />
-                  <Tab value="month" label="Tháng" />
-                  <Tab value="week" label="Tuần" />
-                </Tabs>
-              </Box>
-            </Box>
-            <Divider sx={{ mb: 2 }} />
-            <Box sx={{ height: 350, overflow: 'auto' }}>
-              {loading ? (
-                <Box sx={{ height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-                  <CircularProgress size={40} />
-                </Box>
-              ) : error ? (
-                <Box sx={{ p: 3, textAlign: 'center' }}>
-                  <Typography variant="body2" color="error">
-                    {error}
+        {/* Left Column */}
+        <Grid item xs={12} md={6}>
+          <Grid container spacing={3} direction="column">
+            {/* Revenue Chart - Line Chart */}
+            <Grid item xs={12}>
+              <Card variant="outlined" sx={{ borderRadius: 2, boxShadow: '0px 2px 8px rgba(0,0,0,0.05)', p: 2, height: '100%' }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                  <Typography variant="h6" fontWeight={600}>
+                    Doanh thu trong tuần
                   </Typography>
                 </Box>
-              ) : bestSellers && bestSellers.length > 0 ? (
-                <TableContainer>
-                  <Table>
-                    <TableHead>
-                      <TableRow>
-                        <TableCell padding="checkbox">
-                          <Checkbox 
-                            disabled
-                            indeterminate
-                            size="small"
-                            sx={{ color: 'primary.main' }}
-                          />
-                        </TableCell>
-                        <TableCell>Sản phẩm</TableCell>
-                        <TableCell>Nhà cung cấp</TableCell>
-                        <TableCell>Lợi nhuận</TableCell>
-                        <TableCell>Đã bán</TableCell>
-                        <TableCell>Tồn kho</TableCell>
-                        <TableCell padding="none" align="right"></TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {bestSellers.map((product, index) => (
-                        <TableRow key={product.id} hover>
-                          <TableCell padding="checkbox">
-                            <Checkbox 
-                              size="small"
-                              sx={{ color: 'primary.main' }}
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                              <Avatar 
-                                variant="rounded" 
-                                src={product.image || "/placeholder.png"} 
-                                alt={product.name}
-                                sx={{ width: 40, height: 40, mr: 2, borderRadius: 1 }}
-                              />
-                              <Box>
-                                <Typography variant="body2" fontWeight={500}>
-                                  {product.name}
-                                </Typography>
-                                {product.category && (
-                                  <Typography variant="caption" color="text.secondary">
-                                    {product.category.name}
-                                  </Typography>
-                                )}
-                              </Box>
-                            </Box>
-                          </TableCell>
-                          <TableCell>
-                            <Box sx={{ display: 'flex' }}>
-                              {product.vendors && product.vendors.slice(0, 4).map((vendor, i) => (
-                                <Avatar
-                                  key={i}
-                                  src={vendor.avatar}
-                                  alt={vendor.name}
-                                  sx={{ 
-                                    width: 24, 
-                                    height: 24, 
-                                    fontSize: '0.75rem',
-                                    border: '2px solid #fff',
-                                    ml: i > 0 ? -0.75 : 0
-                                  }}
-                                />
-                              ))}
-                              {product.vendors && product.vendors.length > 4 && (
-                                <Avatar
-                                  sx={{
-                                    width: 24,
-                                    height: 24,
-                                    fontSize: '0.7rem',
-                                    bgcolor: 'primary.light',
-                                    color: 'primary.main',
-                                    fontWeight: 'bold',
-                                    ml: -0.75,
-                                    border: '2px solid #fff'
-                                  }}
-                                >
-                                  +{product.vendors.length - 4}
-                                </Avatar>
-                              )}
-                            </Box>
-                          </TableCell>
-                          <TableCell>
-                            <Box>
-                              <Typography variant="body2" fontWeight={500} color="#3b82f6">
-                                {formatCurrency(product.margin || 0)}
-                              </Typography>
-                              <Typography variant="caption" color={product.profitMargin > 30 ? "success.main" : "text.secondary"}>
-                                {product.profitMargin}% margin
-                              </Typography>
-                            </Box>
-                          </TableCell>
-                          <TableCell>
-                            <Box>
-                              <Typography variant="body2" fontWeight={500}>
-                                {product.sold?.toLocaleString()}
-                              </Typography>
-                              {product.orderCount && (
-                                <Typography variant="caption" color="text.secondary">
-                                  {product.orderCount} đơn hàng
-                                </Typography>
-                              )}
-                            </Box>
-                          </TableCell>
-                          <TableCell>
-                            <Chip 
-                              label={product.stockStatus === 'In Stock' ? 'Còn hàng' : 
-                                    product.stockStatus === 'Low Stock' ? 'Sắp hết' : 'Hết hàng'} 
-                              size="small"
-                              sx={{ 
-                                bgcolor: product.stockStatus === 'In Stock' ? '#ECFDF5' : 
-                                        product.stockStatus === 'Low Stock' ? '#FEF9C3' : '#FEF2F2',
-                                color: product.stockStatus === 'In Stock' ? '#10b981' :
-                                      product.stockStatus === 'Low Stock' ? '#f59e0b' : '#ef4444',
-                                fontWeight: 500,
-                                borderRadius: '12px',
-                                fontSize: '0.7rem',
-                                px: 1.5
-                              }}
-                            />
-                          </TableCell>
-                          <TableCell align="right" padding="none">
-                            <IconButton size="small">
-                              <MoreIcon fontSize="small" />
-                            </IconButton>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </TableContainer>
-              ) : (
-                <Box sx={{ height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', flexDirection: 'column', gap: 2 }}>
-                  <Typography variant="body2" color="text.secondary">
-                    Không có dữ liệu sản phẩm bán chạy
-                  </Typography>
-                  <Button 
-                    variant="outlined" 
-                    size="small" 
-                    startIcon={<RefreshIcon />}
-                    onClick={fetchDashboardData}
-                  >
-                    Tải lại dữ liệu
-                  </Button>
+                <Divider sx={{ mb: 2 }} />
+                <Box sx={{ height: 300, p: 1, position: 'relative' }}>
+                  {revenueLoading ? (
+                    <Box sx={{ 
+                      position: 'absolute', 
+                      top: 0, 
+                      left: 0, 
+                      right: 0, 
+                      bottom: 0, 
+                      display: 'flex', 
+                      justifyContent: 'center', 
+                      alignItems: 'center',
+                      backgroundColor: 'rgba(255,255,255,0.7)' 
+                    }}>
+                      <CircularProgress size={40} />
+                    </Box>
+                  ) : null}
+                  <Line
+                    data={revenueData}
+                    options={revenueOptions}
+                  />
                 </Box>
-              )}
-            </Box>
-          </Card>
-        </Grid>
-      </Grid>
+              </Card>
+            </Grid>
 
-      {/* Recent Orders */}
-      <Grid container spacing={3} sx={{ mt: 0.5 }}>
+            {/* Orders Chart - Bar Chart */}
+            <Grid item xs={12}>
+              <Card variant="outlined" sx={{ borderRadius: 2, boxShadow: '0px 2px 8px rgba(0,0,0,0.05)', p: 2, height: '100%' }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                  <Typography variant="h6" fontWeight={600}>
+                    Đơn hàng trong tuần
+                  </Typography>
+                </Box>
+                <Divider sx={{ mb: 2 }} />
+                <Box sx={{ height: 300, p: 1, position: 'relative' }}>
+                  {revenueLoading ? (
+                    <Box sx={{ 
+                      position: 'absolute', 
+                      top: 0, 
+                      left: 0, 
+                      right: 0, 
+                      bottom: 0, 
+                      display: 'flex', 
+                      justifyContent: 'center', 
+                      alignItems: 'center',
+                      backgroundColor: 'rgba(255,255,255,0.7)' 
+                    }}>
+                      <CircularProgress size={40} />
+                    </Box>
+                  ) : null}
+                  <Bar
+                    data={ordersData}
+                    options={ordersOptions}
+                  />
+                </Box>
+              </Card>
+            </Grid>
+          </Grid>
+        </Grid>
+
+        {/* Recent Orders */}
         <Grid item xs={12}>
           <Card variant="outlined" sx={{ borderRadius: 2, boxShadow: '0px 2px 8px rgba(0,0,0,0.05)' }}>
             <CardHeader 

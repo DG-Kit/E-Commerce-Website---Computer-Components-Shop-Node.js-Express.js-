@@ -15,7 +15,8 @@ import {
   Grid,
   useTheme,
   Divider,
-  Paper
+  Paper,
+  Avatar
 } from '@mui/material';
 import {
   ShoppingCart as CartIcon,
@@ -210,7 +211,7 @@ const ProductCard = ({ product }) => {
     <>
       <Card
         sx={{
-          height: '100%',
+          height: 380, // Fixed height for all cards
           display: 'flex',
           flexDirection: 'column',
           position: 'relative',
@@ -303,26 +304,33 @@ const ProductCard = ({ product }) => {
             sx={{
               position: 'relative',
               width: '100%',
-              aspectRatio: '1 / 1', // Enforce square aspect ratio for the container
-              overflow: 'hidden',
+              height: 200,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              p: 0.5, // Reduced padding
+              bgcolor: '#f8f9fa',
+              p: 1,
+              boxSizing: 'border-box',
             }}
           >
-            <CardMedia
-              component="img"
-              image={imageUrl}
+            <Avatar
+              src={imageUrl}
               alt={product.name}
+              variant="square"
               sx={{
+                width: 160,
+                height: 160,
                 objectFit: 'contain',
-                width: 'auto',
-                height: 'auto',
-                maxWidth: '100%',
-                maxHeight: '100%',
-                display: 'block',
-                transition: 'transform 0.3s ease-in-out',
+                backgroundColor: '#f8f9fa', // Light background
+                '&.MuiAvatar-root img': {
+                  objectFit: 'contain',
+                  padding: '8px',
+                  transform: 'scale(0.9)', // Để ảnh gọn hơn chút
+                  transition: 'transform 0.3s ease-in-out',
+                  '&:hover': {
+                    transform: 'scale(1)',
+                  },
+                }
               }}
             />
           </Box>
@@ -337,7 +345,13 @@ const ProductCard = ({ product }) => {
           pt: 1, 
           '&:last-child': { pb: 1.5 } // Override MUI's default padding-bottom
         }}>
-          <Typography variant="caption" color="text.secondary" gutterBottom noWrap>
+          <Typography 
+            variant="caption" 
+            color="text.secondary" 
+            gutterBottom 
+            noWrap
+            sx={{ height: 18, display: 'block' }} // Fixed height
+          >
             {brandDisplay}
           </Typography>
 
@@ -353,7 +367,7 @@ const ProductCard = ({ product }) => {
                 overflow: 'hidden',
                 WebkitBoxOrient: 'vertical',
                 WebkitLineClamp: 2,
-                minHeight: '38px', // Reduced from 40px
+                height: '38px', // Fixed height instead of minHeight
                 color: 'text.primary',
                 '&:hover': {
                   color: 'primary.main',
@@ -367,7 +381,7 @@ const ProductCard = ({ product }) => {
           </Link>
 
           {/* --- Rating --- */}
-          <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5, height: 20 }}>
             <Rating 
               value={product.averageRating || 4.5} 
               precision={0.5} 
@@ -387,7 +401,14 @@ const ProductCard = ({ product }) => {
           {/* --- Price and View Details Button (Pushed to bottom) --- */}
           <Box sx={{ mt: 'auto', pt: 0.5 }}>
             {/* Price display with original price and discount if applicable */}
-            <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 0.5, mb: 0.75 }}>
+            <Box sx={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              flexWrap: 'wrap', 
+              gap: 0.5, 
+              mb: 0.75,
+              height: 24 // Fixed height for price section
+            }}>
               {/* Current price */}
               <Typography 
                 variant="body1"
@@ -445,7 +466,7 @@ const ProductCard = ({ product }) => {
                 textTransform: 'none',
                 fontWeight: 600,
                 py: 0.5, // Reduced vertical padding
-                minHeight: '30px', // Ensure minimum height
+                height: 32, // Fixed height button
                 fontSize: '0.8125rem',
               }}
             >
@@ -489,18 +510,27 @@ const ProductCard = ({ product }) => {
               <Box sx={{ 
                 display: 'flex',
                 justifyContent: 'center',
+                alignItems: 'center',
                 mb: 3,
                 bgcolor: theme.palette.grey[50],
                 p: 2,
-                borderRadius: 1
+                borderRadius: 1,
+                height: 200,
+                overflow: 'hidden'
               }}>
-                <img
+                <Avatar
                   src={imageUrl}
                   alt={product.name}
-                  style={{ 
-                    maxWidth: '180px',
-                    maxHeight: '180px',
-                    objectFit: 'contain'
+                  variant="square"
+                  sx={{
+                    width: 160,
+                    height: 160,
+                    objectFit: 'contain',
+                    backgroundColor: theme.palette.grey[50],
+                    '&.MuiAvatar-root img': {
+                      objectFit: 'contain',
+                      padding: '8px',
+                    }
                   }}
                 />
               </Box>

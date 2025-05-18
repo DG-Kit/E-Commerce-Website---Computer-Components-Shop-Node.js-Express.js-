@@ -235,10 +235,58 @@ exports.deleteAddress = async (req, res) => {
 // Lấy danh sách người dùng
 exports.getAllUsers = async (req, res) => {
     try {
-        const users = await User.find().select('-password'); // Không trả về mật khẩu
-        res.status(200).json(users);
+        console.log('getAllUsers called with query:', req.query);
+        console.log('User making request:', req.user);
+
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const skip = (page - 1) * limit;
+        const search = req.query.search || '';
+
+        console.log('Pagination params:', { page, limit, skip, search });
+
+        // Build search query
+        let query = {};
+        if (search) {
+            query = {
+                $or: [
+                    { fullName: { $regex: search, $options: 'i' } },
+                    { email: { $regex: search, $options: 'i' } }
+                ]
+            };
+        }
+
+        console.log('MongoDB query:', JSON.stringify(query));
+
+        // Get total count for pagination
+        const totalUsers = await User.countDocuments(query);
+        console.log('Total users found:', totalUsers);
+
+        // Get paginated users
+        const users = await User.find(query)
+            .select('-password') // Exclude password
+            .sort({ createdAt: -1 }) // Sort by newest first
+            .skip(skip)
+            .limit(limit);
+
+        console.log(`Retrieved ${users.length} users for page ${page}`);
+
+        res.status(200).json({
+            success: true,
+            message: 'Lấy danh sách người dùng thành công',
+            data: {
+                users,
+                totalUsers
+            }
+        });
     } catch (error) {
-        res.status(500).json({ msg: 'Lỗi server', error: error.message });
+        console.error('Error in getAllUsers:', error);
+        console.error('Stack trace:', error.stack);
+        res.status(500).json({ 
+            success: false,
+            message: 'Lỗi server', 
+            error: error.message 
+        });
     }
 };
 

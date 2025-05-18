@@ -384,9 +384,18 @@ const CheckoutPage = () => {
       // Format cart items to match backend expectations
       const items = cartItems.map(item => ({
         productId: item.product._id,
-        variantId: item.variant._id,
+        variantId: item.variant?._id || null,
         quantity: item.quantity
       }));
+      
+      // Log dữ liệu trước khi gửi để debug
+      console.log('Đơn hàng sẽ gửi:', {
+        items,
+        shippingAddress: shippingInfo,
+        paymentMethod,
+        discountCode: couponSuccess ? couponCode : null,
+        pointsUsed: pointsToUse
+      });
       
       const orderData = {
         items: items,
@@ -395,10 +404,12 @@ const CheckoutPage = () => {
         },
         paymentMethod,
         discountCode: couponSuccess ? couponCode : null,
-        pointsUsed: pointsToUse
+        pointsUsed: pointsToUse,
+        shippingFee: shippingFee
       };
       
       const response = await orderApi.createOrder(orderData);
+      console.log('Kết quả đơn hàng:', response.data);
       
       setOrderId(response.data.data._id);
       setOrderCreated(true);
@@ -418,6 +429,7 @@ const CheckoutPage = () => {
       }
     } catch (error) {
       console.error('Error placing order:', error);
+      console.error('Error details:', error.response?.data);
       
       let errorMessage = 'Không thể đặt hàng';
       if (error.response && error.response.data && error.response.data.message) {

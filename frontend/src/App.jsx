@@ -21,6 +21,13 @@ import ProtectedRoute from './components/ProtectedRoute';
 import AdminRoute from './components/AdminRoute';
 import AdminLayout from './components/admin/AdminLayout';
 import Dashboard from './pages/admin/Dashboard';
+import Products from './pages/admin/Products';
+import ProductAdd from './pages/admin/ProductAdd';
+import ProductEdit from './pages/admin/ProductEdit';
+import Categories from './pages/admin/Categories';
+import AdminOrders from './pages/admin/Orders';
+import Users from './pages/admin/Users';
+import Coupons from './pages/admin/Coupons';
 import ScrollToTop from './components/ScrollToTop';
 import { AuthProvider } from './context/AuthContext';
 import { CartProvider } from './context/CartContext';
@@ -72,12 +79,15 @@ function App() {
                   }
                 >
                   <Route index element={<Dashboard />} />
-                  {/* Add other admin routes here */}
-                  <Route path="products" element={<div>Quản lý sản phẩm</div>} />
-                  <Route path="categories" element={<div>Quản lý danh mục</div>} />
-                  <Route path="orders" element={<div>Quản lý đơn hàng</div>} />
-                  <Route path="users" element={<div>Quản lý người dùng</div>} />
-                  <Route path="coupons" element={<div>Quản lý mã giảm giá</div>} />
+                  {/* Admin routes */}
+                  <Route path="products" element={<Products />} />
+                  <Route path="products/add" element={<ProductAdd />} />
+                  <Route path="products/edit/:id" element={<ProductEdit />} />
+                  <Route path="categories" element={<Categories />} />
+                  <Route path="orders" element={<AdminOrders />} />
+                  <Route path="orders/:id" element={<OrderDetail />} />
+                  <Route path="users" element={<Users />} />
+                  <Route path="coupons" element={<Coupons />} />
                   <Route path="settings" element={<div>Cài đặt hệ thống</div>} />
                 </Route>
                 

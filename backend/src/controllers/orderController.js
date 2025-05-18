@@ -20,6 +20,7 @@ const createOrder = async (req, res) => {
     // Thêm log để debug
     console.log('Authorization header:', req.headers.authorization);
     console.log('User object:', req.user);
+    console.log('Body request:', JSON.stringify(req.body, null, 2));
     
     // Kiểm tra xem req.user có tồn tại không
     if (!req.user) {
@@ -97,9 +98,24 @@ const createOrder = async (req, res) => {
         let variantName = '';
         let price = 0;
         
+        console.log(`Xử lý sản phẩm ${productId}, variant: ${variantId}, số lượng: ${item.quantity}`);
+        console.log('Product data:', JSON.stringify(product, null, 2));
+        
         if (variantId) {
+          // Kiểm tra xem sản phẩm có variants không
+          if (!product.variants || !Array.isArray(product.variants) || product.variants.length === 0) {
+            await session.abortTransaction();
+            session.endSession();
+            return res.status(400).json({
+              success: false,
+              message: `Sản phẩm "${product.name}" không có biến thể nào`
+            });
+          }
+          
           // Tìm variant trong mảng variants của sản phẩm
           const variantIndex = product.variants.findIndex(v => v._id.toString() === variantId);
+          console.log(`variantIndex: ${variantIndex}, tìm variant ${variantId} trong ${product.variants?.length || 0} variants`);
+          
           if (variantIndex === -1) {
             await session.abortTransaction();
             session.endSession();
@@ -260,7 +276,16 @@ const createOrder = async (req, res) => {
     
     // Lưu các sản phẩm đã cập nhật
     for (const product of productMap.values()) {
-      await product.save({ session });
+      // Lưu sản phẩm với findByIdAndUpdate để chỉ cập nhật trường stock và variants
+      // thay vì lưu toàn bộ đối tượng sản phẩm (tránh mất trường price)
+      await Product.findByIdAndUpdate(
+        product._id,
+        { 
+          stock: product.stock,
+          variants: product.variants
+        },
+        { session }
+      );
     }
     
     console.log('Đơn hàng sau khi lưu:', JSON.stringify(savedOrder));
@@ -490,7 +515,29 @@ const updateOrderStatus = async (req, res) => {
     }
 
     // Xử lý các trường hợp đặc biệt của trạng thái
-    if (status === 'CANCELLED') {
+    if (status === 'SHIPPED') {
+      // Logic xử lý khi chuyển sang trạng thái đang giao hàng
+      console.log(`Đơn hàng ${order._id} chuyển sang trạng thái đang giao hàng`);
+      // Có thể thêm logic thông báo cho người dùng qua email/SMS ở đây
+    } else if (status === 'DELIVERED') {
+      // Khi đơn hàng COD được giao thành công, cập nhật trạng thái thanh toán
+      if (!order.isPaid && order.paymentMethod === 'COD') {
+        order.isPaid = true;
+        order.paidAt = new Date();
+      }
+      
+      // Nếu đơn hàng có điểm thưởng và chưa được cộng vào tài khoản người dùng
+      // (Giả sử điểm chỉ được cộng khi đơn hàng DELIVERED và đã thanh toán)
+      if (order.isPaid && order.pointsEarned > 0) {
+        const user = await User.findById(order.userId).session(session);
+        if (user) {
+          // Cộng điểm thưởng vào tài khoản người dùng
+          user.points = (user.points || 0) + order.pointsEarned;
+          await user.save({ session });
+          console.log(`Đã cộng ${order.pointsEarned} điểm thưởng cho người dùng ${user.email}`);
+        }
+      }
+    } else if (status === 'CANCELLED') {
       // Nếu đơn hàng đã SHIPPED hoặc DELIVERED, không cho phép hủy
       if (['SHIPPED', 'DELIVERED'].includes(order.status)) {
         await session.abortTransaction();
@@ -543,21 +590,6 @@ const updateOrderStatus = async (req, res) => {
             user.points = (user.points || 0) + order.pointsUsed;
             await user.save({ session });
           }
-        }
-      }
-    } else if (status === 'DELIVERED' && !order.isPaid && order.paymentMethod === 'COD') {
-      // Khi đơn hàng COD được giao thành công, cập nhật trạng thái thanh toán
-      order.isPaid = true;
-      order.paidAt = new Date();
-      
-      // Nếu đơn hàng có điểm thưởng và chưa được cộng vào tài khoản người dùng
-      if (order.pointsEarned > 0) {
-        const user = await User.findById(order.userId).session(session);
-        if (user) {
-          // Cộng điểm thưởng vào tài khoản người dùng
-          user.points = (user.points || 0) + order.pointsEarned;
-          await user.save({ session });
-          console.log(`Đã cộng ${order.pointsEarned} điểm thưởng cho người dùng ${user.email}`);
         }
       }
     }

@@ -12,54 +12,168 @@ const mongoose = require('mongoose');
  */
 const getDashboardStats = async (req, res) => {
   try {
-    // Tổng số sản phẩm
+    const today = new Date();
+    const currentYear = today.getFullYear();
+    const currentMonth = today.getMonth(); // 0-indexed
+
+    // --- Start and End dates for calculations ---
+    // Current Month
+    const currentMonthStartDate = new Date(currentYear, currentMonth, 1);
+    const currentMonthEndDate = new Date(currentYear, currentMonth + 1, 0, 23, 59, 59, 999); // Last moment of last day of current month
+
+    // Previous Month
+    const previousMonthDate = new Date(today);
+    previousMonthDate.setMonth(today.getMonth() - 1);
+    const previousMonthYear = previousMonthDate.getFullYear();
+    const previousMonth = previousMonthDate.getMonth();
+    const previousMonthStartDate = new Date(previousMonthYear, previousMonth, 1);
+    const previousMonthEndDate = new Date(previousMonthYear, previousMonth + 1, 0, 23, 59, 59, 999);
+
+    // Last 7 days for sparklines (including today)
+    const sevenDaysAgo = new Date(today);
+    sevenDaysAgo.setDate(today.getDate() - 6); // 7 days including today
+    sevenDaysAgo.setHours(0, 0, 0, 0);
+    const todayEndDateForSparkline = new Date(today); // Use current time for "up to now"
+    todayEndDateForSparkline.setHours(23,59,59,999);
+
+
+    // --- Aggregations ---
+    // 1. Total Products
     const productsCount = await Product.countDocuments({ isActive: true });
     
-    // Tổng số người dùng
+    // 2. Total Users
     const usersCount = await User.countDocuments();
     
-    // Thống kê đơn hàng
-    const ordersStats = await Order.aggregate([
+    // 3. Order Status (Overall - for Doughnut chart)
+    const overallOrdersStats = await Order.aggregate([
       {
         $group: {
           _id: "$status",
-          count: { $sum: 1 },
-          revenue: { $sum: "$totalAmount" }
+          count: { $sum: 1 }
         }
       }
     ]);
     
-    // Xử lý dữ liệu thống kê đơn hàng
-    let totalOrders = 0;
-    let totalRevenue = 0;
-    let ordersByStatus = {
-      pending: 0,
-      processing: 0,
-      delivered: 0,
-      cancelled: 0
-    };
-    
-    ordersStats.forEach(stat => {
-      if (stat._id !== 'cancelled') {
-        totalRevenue += stat.revenue;
-      }
-      totalOrders += stat.count;
-      if (ordersByStatus.hasOwnProperty(stat._id)) {
-        ordersByStatus[stat._id] = stat.count;
+    let ordersByStatus = { PENDING: 0, PROCESSING: 0, DELIVERED: 0, CANCELLED: 0 };
+    overallOrdersStats.forEach(stat => {
+      if (ordersByStatus.hasOwnProperty(stat._id.toUpperCase())) {
+        ordersByStatus[stat._id.toUpperCase()] = stat.count;
       }
     });
+
+    // 4. Current Month Revenue
+    const currentMonthRevenueData = await Order.aggregate([
+      { $match: { createdAt: { $gte: currentMonthStartDate, $lte: currentMonthEndDate }, status: { $ne: 'CANCELLED' } } },
+      { $group: { _id: null, total: { $sum: "$totalAmount" } } }
+    ]);
+    const currentMonthRevenue = currentMonthRevenueData[0]?.total || 0;
+
+    // 5. Previous Month Revenue
+    const previousMonthRevenueData = await Order.aggregate([
+      { $match: { createdAt: { $gte: previousMonthStartDate, $lte: previousMonthEndDate }, status: { $ne: 'CANCELLED' } } },
+      { $group: { _id: null, total: { $sum: "$totalAmount" } } }
+    ]);
+    const previousMonthRevenue = previousMonthRevenueData[0]?.total || 0;
     
+    // 6. Current Month Orders
+    const currentMonthOrdersCount = await Order.countDocuments({
+      createdAt: { $gte: currentMonthStartDate, $lte: currentMonthEndDate }
+    });
+
+    // 7. Previous Month Orders
+    const previousMonthOrdersCount = await Order.countDocuments({
+      createdAt: { $gte: previousMonthStartDate, $lte: previousMonthEndDate }
+    });
+
+    // 8. Overall Revenue (for the card that was originally showing total revenue)
+    // This can be the same as currentMonthRevenue if the card title is "Doanh thu tháng"
+    // Or calculate total historical revenue if needed elsewhere. For now, let's align with "Doanh thu tháng"
+    const overallRevenueForCard = currentMonthRevenue; 
+    const overallOrdersForCard = currentMonthOrdersCount;
+
+
+    // 9. Revenue Sparkline Data (Last 7 Days)
+    const revenueSparkline = await Order.aggregate([
+      { $match: { createdAt: { $gte: sevenDaysAgo, $lte: todayEndDateForSparkline }, status: { $ne: 'CANCELLED' } } },
+      { 
+        $group: {
+          _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
+          dailyRevenue: { $sum: "$totalAmount" }
+        } 
+      },
+      { $sort: { _id: 1 } }
+    ]);
+    
+    // 10. Orders Sparkline Data (Last 7 Days)
+    const ordersSparkline = await Order.aggregate([
+      { $match: { createdAt: { $gte: sevenDaysAgo, $lte: todayEndDateForSparkline } } },
+      { 
+        $group: {
+          _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
+          dailyOrders: { $sum: 1 }
+        }
+      },
+      { $sort: { _id: 1 } }
+    ]);
+
+    // --- Helper to fill in missing days for sparklines ---
+    const fillMissingSparklineData = (startDate, endDate, actualData, valueField, defaultValue = 0) => {
+      const filledData = [];
+      const dateMap = new Map(actualData.map(item => [item._id, item[valueField]]));
+      let currentDate = new Date(startDate);
+      currentDate.setHours(0,0,0,0);
+
+
+      while (currentDate <= endDate) {
+        const dateString = currentDate.toISOString().split('T')[0];
+        filledData.push(dateMap.get(dateString) || defaultValue);
+        currentDate.setDate(currentDate.getDate() + 1);
+      }
+      return filledData;
+    };
+    
+    const endDateForSparklineFilling = new Date(today); // Use today as the end for filling
+    endDateForSparklineFilling.setHours(0,0,0,0);
+
+
+    const revenueSparklineData = fillMissingSparklineData(sevenDaysAgo, endDateForSparklineFilling, revenueSparkline, 'dailyRevenue');
+    const ordersSparklineData = fillMissingSparklineData(sevenDaysAgo, endDateForSparklineFilling, ordersSparkline, 'dailyOrders');
+    
+    // --- Percentage Change Calculations ---
+    const revenueChange = previousMonthRevenue === 0 
+      ? (currentMonthRevenue > 0 ? 100 : 0) 
+      : ((currentMonthRevenue - previousMonthRevenue) / previousMonthRevenue) * 100;
+      
+    const ordersChange = previousMonthOrdersCount === 0
+      ? (currentMonthOrdersCount > 0 ? 100 : 0)
+      : ((currentMonthOrdersCount - previousMonthOrdersCount) / previousMonthOrdersCount) * 100;
+
     return res.status(200).json({
       success: true,
       message: 'Lấy thông tin thống kê thành công',
       data: {
         products: productsCount,
         users: usersCount,
-        orders: {
-          total: totalOrders,
-          ...ordersByStatus
+        // Stats for the top cards
+        currentMonthRevenue: currentMonthRevenue,
+        revenueChange: parseFloat(revenueChange.toFixed(2)), // Percentage
+        revenueSparkline: revenueSparklineData, // Array of last 7 days revenue
+
+        currentMonthOrders: currentMonthOrdersCount,
+        ordersChange: parseFloat(ordersChange.toFixed(2)), // Percentage
+        ordersSparkline: ordersSparklineData, // Array of last 7 days order counts
+        
+        // Stats for order status doughnut chart (using existing structure)
+        orders: { // This structure is used by the doughnut chart and order status summary card
+          total: await Order.countDocuments(), // Overall total orders
+          pending: ordersByStatus.PENDING,
+          processing: ordersByStatus.PROCESSING,
+          delivered: ordersByStatus.DELIVERED,
+          cancelled: ordersByStatus.CANCELLED
         },
-        revenue: totalRevenue
+        // This specific 'revenue' field was used by the old 'Doanh thu' summary card.
+        // Now it will be currentMonthRevenue as per card title "Doanh thu tháng"
+        revenue: currentMonthRevenue 
       }
     });
   } catch (error) {
@@ -320,56 +434,97 @@ const getBestSellingProducts = async (req, res) => {
  */
 const getRevenueData = async (req, res) => {
   try {
-    const timeRange = req.query.timeRange || 'week';
-    let startDate, endDate, dateFormat, groupBy;
-    const now = new Date();
-    
-    // Xác định khoảng thời gian dựa trên timeRange
-    switch (timeRange) {
-      case 'week':
-        // 7 ngày gần nhất
-        startDate = new Date(now);
-        startDate.setDate(now.getDate() - 6); // Từ 6 ngày trước đến hôm nay = 7 ngày
-        startDate.setHours(0, 0, 0, 0);
-        dateFormat = '%u'; // Thứ trong tuần (1-7, 1 là thứ 2)
-        groupBy = { $dayOfWeek: '$createdAt' }; // MongoDB: 1 là Chủ nhật, 2 là thứ 2, ...
-        break;
-        
-      case 'month':
-        // 30 ngày gần nhất
-        startDate = new Date(now);
-        startDate.setDate(now.getDate() - 29); // Từ 29 ngày trước đến hôm nay = 30 ngày
-        startDate.setHours(0, 0, 0, 0);
-        dateFormat = '%d'; // Ngày trong tháng
-        groupBy = { $dayOfMonth: '$createdAt' };
-        break;
-        
-      case 'year':
-        // 12 tháng gần nhất
-        startDate = new Date(now);
-        startDate.setMonth(now.getMonth() - 11); // Từ 11 tháng trước đến tháng hiện tại = 12 tháng
-        startDate.setDate(1);
-        startDate.setHours(0, 0, 0, 0);
-        dateFormat = '%m'; // Tháng trong năm
-        groupBy = { $month: '$createdAt' };
-        break;
-        
-      default:
-        return res.status(400).json({
-          success: false,
-          message: 'Khoảng thời gian không hợp lệ'
-        });
+    const { timeRange } = req.query;
+    let startDate, endDate;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Start of day
+    const currentYear = today.getFullYear();
+    const currentMonth = today.getMonth(); // 0-11
+
+    let groupBy = null;
+    let labels = [];
+    // const_ = (day) => day.toISOString().split('T')[0]; // Helper to format date as YYYY-MM-DD (removed const_ as it's not used)
+
+    // Helper function to format date string for labels (e.g., 'DD')
+    // Placed here to be within scope
+    function formatDateString(dateOrTimestamp) {
+        const dateObj = new Date(dateOrTimestamp); // Ensure it's a Date object
+        const day = String(dateObj.getDate()).padStart(2, '0');
+        // const month = String(dateObj.getMonth() + 1).padStart(2, '0'); // Month is 0-indexed
+        return `${day}`;
     }
-    
-    endDate = new Date(now);
-    endDate.setHours(23, 59, 59, 999);
-    
-    // Truy vấn dữ liệu doanh thu
+
+    switch (timeRange) {
+      case 'week1':
+        startDate = new Date(currentYear, currentMonth, 1);
+        endDate = new Date(currentYear, currentMonth, 7);
+        endDate.setHours(23, 59, 59, 999); // End of day
+        groupBy = { $dayOfMonth: '$createdAt' };
+        for (let i = 0; i < 7; i++) labels.push(formatDateString(new Date(startDate).setDate(startDate.getDate() + i)));
+        break;
+      case 'week2':
+        startDate = new Date(currentYear, currentMonth, 8);
+        endDate = new Date(currentYear, currentMonth, 14);
+        endDate.setHours(23, 59, 59, 999);
+        groupBy = { $dayOfMonth: '$createdAt' };
+        for (let i = 0; i < 7; i++) labels.push(formatDateString(new Date(startDate).setDate(startDate.getDate() + i)));
+        break;
+      case 'week3':
+        startDate = new Date(currentYear, currentMonth, 15);
+        endDate = new Date(currentYear, currentMonth, 21);
+        endDate.setHours(23, 59, 59, 999);
+        groupBy = { $dayOfMonth: '$createdAt' };
+        for (let i = 0; i < 7; i++) labels.push(formatDateString(new Date(startDate).setDate(startDate.getDate() + i)));
+        break;
+      case 'week4':
+        startDate = new Date(currentYear, currentMonth, 22);
+        // Calculate end of the current month for week 4
+        endDate = new Date(currentYear, currentMonth + 1, 0); // Last day of current month
+        endDate.setHours(23, 59, 59, 999);
+        groupBy = { $dayOfMonth: '$createdAt' };
+        const tempDate = new Date(startDate);
+        while(tempDate <= endDate) {
+            labels.push(formatDateString(new Date(tempDate))); // Ensure tempDate is passed as a new Date for safety
+            tempDate.setDate(tempDate.getDate() + 1);
+        }
+        break;
+      case 'month':
+        startDate = new Date(currentYear, currentMonth, 1);
+        endDate = new Date(currentYear, currentMonth + 1, 0);
+        endDate.setHours(23, 59, 59, 999);
+        groupBy = { $dayOfMonth: '$createdAt' };
+        for (let i = 1; i <= endDate.getDate(); i++) labels.push(i.toString().padStart(2, '0')); // Pad day to ensure consistency
+        break;
+      case 'year':
+        startDate = new Date(currentYear, 0, 1);
+        endDate = new Date(currentYear, 11, 31);
+        endDate.setHours(23, 59, 59, 999);
+        groupBy = { $month: '$createdAt' };
+        labels = ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9', 'T10', 'T11', 'T12'];
+        break;
+      default: // Default to current week (last 7 days if not week1-4)
+        endDate = new Date(); // Today, end of day
+        endDate.setHours(23, 59, 59, 999);
+        startDate = new Date(); // 6 days ago, start of day
+        startDate.setDate(today.getDate() - 6);
+        startDate.setHours(0, 0, 0, 0);
+        groupBy = { $isoDayOfWeek: '$createdAt' }; // Monday (1) to Sunday (7)
+        const dayMap = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7']; // JS: Sun (0) to Sat (6)
+        
+        // Generate labels for the last 7 days correctly as 'T2', 'T3' etc.
+        for (let i = 0; i < 7; i++) {
+            const d = new Date(startDate);
+            d.setDate(startDate.getDate() + i);
+            labels.push(dayMap[d.getDay()]);
+        }
+    }
+
+
     const revenueData = await Order.aggregate([
       {
         $match: {
           createdAt: { $gte: startDate, $lte: endDate },
-          status: { $ne: 'cancelled' } // Không tính đơn hàng đã hủy
+          status: { $ne: 'CANCELLED' } 
         }
       },
       {
@@ -383,75 +538,67 @@ const getRevenueData = async (req, res) => {
         $sort: { _id: 1 }
       }
     ]);
-    
-    // Xử lý và định dạng kết quả
-    let labels = [];
-    let revenue = [];
-    let orders = [];
-    
-    // Tạo mảng các ngày/tháng đầy đủ trong khoảng thời gian
-    if (timeRange === 'week') {
-      // Chuyển đổi từ định dạng MongoDB (1 = Chủ nhật) sang định dạng hiển thị (1 = Thứ 2)
-      const dayMap = {
-        2: 'T2',  // Monday
-        3: 'T3',  // Tuesday
-        4: 'T4',  // Wednesday
-        5: 'T5',  // Thursday
-        6: 'T6',  // Friday
-        7: 'T7',  // Saturday
-        1: 'CN'   // Sunday
-      };
-      
-      // Tạo mảng các ngày trong tuần
-      for (let i = 1; i <= 7; i++) {
-        const dayNum = i === 7 ? 1 : i + 1; // Chuyển đổi sang định dạng MongoDB
-        const day = dayMap[dayNum];
-        labels.push(day);
-        
-        // Tìm dữ liệu tương ứng
-        const dayData = revenueData.find(item => item._id === dayNum);
-        revenue.push(dayData ? dayData.totalRevenue : 0);
-        orders.push(dayData ? dayData.orderCount : 0);
-      }
-    } else if (timeRange === 'month') {
-      // Ngày trong tháng
-      const daysInMonth = 30;
-      for (let i = 0; i < daysInMonth; i++) {
-        const day = startDate.getDate() + i;
-        labels.push(`${day}`);
-        
-        // Tìm dữ liệu tương ứng
-        const dayData = revenueData.find(item => item._id === day);
-        revenue.push(dayData ? dayData.totalRevenue : 0);
-        orders.push(dayData ? dayData.orderCount : 0);
-      }
-    } else if (timeRange === 'year') {
-      // Tháng trong năm
-      const monthMap = {
-        1: 'T1', 2: 'T2', 3: 'T3', 4: 'T4', 5: 'T5', 6: 'T6',
-        7: 'T7', 8: 'T8', 9: 'T9', 10: 'T10', 11: 'T11', 12: 'T12'
-      };
-      
-      for (let i = 1; i <= 12; i++) {
-        labels.push(monthMap[i]);
-        
-        // Tìm dữ liệu tương ứng
-        const monthData = revenueData.find(item => item._id === i);
-        revenue.push(monthData ? monthData.totalRevenue : 0);
-        orders.push(monthData ? monthData.orderCount : 0);
-      }
+
+    let processedRevenue = [];
+    let processedOrders = [];
+
+    if (timeRange.startsWith('week') || timeRange === 'month') { 
+        const dataMap = new Map(revenueData.map(item => [item._id, item])); // _id is dayOfMonth (1-31) or dayOfWeek (1-7 for default)
+        labels.forEach(label => {
+            let keyToLookup;
+            if (timeRange.startsWith('week')) { // week1, week2, week3, week4
+                 keyToLookup = parseInt(label); // Labels are '01', '02', etc.
+            } else if (timeRange === 'month') {
+                 keyToLookup = parseInt(label); // Labels are '01', '02', etc.
+            } else { // Default 'week' - last 7 days. Labels are 'T2', 'CN', etc.
+                // This case needs to map 'T2' back to a dayOfWeek if groupBy was $isoDayOfWeek
+                // However, current default uses $isoDayOfWeek, and labels are ['CN', 'T2', ...]
+                // The mapping from revenueData._id (1-7 for $isoDayOfWeek) to these labels is complex.
+                // For simplicity, the default case (last 7 days) will now use dayOfMonth for groupBy if we want daily labels
+                // Let's stick to the current default label generation and mapping for now
+                // The default case (last 7 days) will map labels 'CN', 'T2' etc. to data based on matching aggregation key
+                // This part requires careful handling based on groupBy and label generation strategy for default 'week'.
+                // For now, assuming the existing default week logic for labels and dataMap is correct.
+                // For $isoDayOfWeek, _id is 1 (Mon) to 7 (Sun).
+                const dayStrMap = {'CN': 7, 'T2': 1, 'T3': 2, 'T4': 3, 'T5': 4, 'T6': 5, 'T7': 6}; // Map label to ISO day
+                keyToLookup = dayStrMap[label];
+
+            }
+            const dataPoint = dataMap.get(keyToLookup);
+            processedRevenue.push(dataPoint ? dataPoint.totalRevenue : 0);
+            processedOrders.push(dataPoint ? dataPoint.orderCount : 0);
+        });
+    } else if (timeRange === 'year') { 
+        const dataMap = new Map(revenueData.map(item => [item._id, item])); // _id is month number (1-12)
+        for (let i = 1; i <= 12; i++) {
+            const dataPoint = dataMap.get(i);
+            processedRevenue.push(dataPoint ? dataPoint.totalRevenue : 0);
+            processedOrders.push(dataPoint ? dataPoint.orderCount : 0);
+        }
+    } else { // Default case: last 7 days, labels ['CN', 'T2', ...]
+        // This is now the `default` in switch, where _id is $isoDayOfWeek (1=Mon, ..., 7=Sun)
+        // and labels are ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'] in display order.
+        const dataMap = new Map(revenueData.map(item => [item._id, item]));
+        const dayLabelToIsoDay = { 'T2': 1, 'T3': 2, 'T4': 3, 'T5': 4, 'T6': 5, 'T7': 6, 'CN': 7 };
+
+        labels.forEach(labelKey => {
+            const isoDayKey = dayLabelToIsoDay[labelKey];
+            const dataPoint = dataMap.get(isoDayKey);
+            processedRevenue.push(dataPoint ? dataPoint.totalRevenue : 0);
+            processedOrders.push(dataPoint ? dataPoint.orderCount : 0);
+        });
     }
-    
+
     return res.status(200).json({
       success: true,
       message: 'Lấy dữ liệu doanh thu thành công',
       data: {
-        labels,
-        revenue,
-        orders
+        labels: labels,
+        revenue: processedRevenue,
+        orders: processedOrders,
       }
     });
-    
+
   } catch (error) {
     console.error('Lỗi lấy dữ liệu doanh thu:', error);
     return res.status(500).json({

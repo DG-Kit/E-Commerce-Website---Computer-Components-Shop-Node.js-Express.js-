@@ -1,6 +1,7 @@
 const Order = require('../models/Order');
 const Payment = require('../models/Payment');
 const User = require('../models/User');
+const Product = require('../models/Product');
 const vnpayService = require('../services/vnpayService');
 const nodemailer = require('nodemailer');
 const mongoose = require('mongoose');
@@ -163,7 +164,6 @@ const vnpayReturn = async (req, res) => {
       // Cập nhật điểm thưởng cho người dùng (10% tổng giá trị đơn hàng)
       const pointsEarned = Math.floor(order.totalAmount * 0.1);
       order.pointsEarned = pointsEarned;
-      await order.save({ session });
       
       // Cập nhật điểm thưởng cho người dùng vào trường points
       const user = await User.findById(order.userId).session(session);
@@ -179,6 +179,10 @@ const vnpayReturn = async (req, res) => {
       // Cộng điểm thưởng vào points của người dùng
       user.points = (user.points || 0) + pointsEarned;
       await user.save({ session });
+      
+     
+      // Lưu lại đơn hàng sau khi đã cập nhật tất cả thông tin
+      await order.save({ session });
       
       // Lưu thông tin thanh toán
       await payment.save({ session });

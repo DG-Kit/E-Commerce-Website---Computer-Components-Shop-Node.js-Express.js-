@@ -173,14 +173,60 @@ export const adminApi = {
   // Get all products (admin)
   getAllProducts: (params) => api.get('/admin/products', { params }),
   
-  // Get all orders (admin)
+  // Get products with pagination, search and filter (admin)
+  getProducts: (params) => api.get('/admin/products', { params }),
+  
+  // Get single product (admin)
+  getProduct: (id) => api.get(`/admin/products/${id}`),
+  
+  // Create new product (admin)
+  createProduct: (data) => api.post('/admin/products', data),
+  
+  // Update product (admin)
+  updateProduct: (id, data) => api.put(`/admin/products/${id}`, data),
+  
+  // Delete product (admin)
+  deleteProduct: (id) => api.delete(`/admin/products/${id}`),
+  
+  // Toggle product active status
+  toggleProductStatus: (id) => api.put(`/admin/products/${id}/toggle-status`),
+
+  // Upload product image
+  uploadProductImage: (formData) => {
+    return api.post('/admin/upload', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+  },
+  
+  // Categories API
+  getCategories: (params) => api.get('/categories', { params }),
+  getCategoryById: (id) => api.get(`/categories/${id}`),
+  createCategory: (data) => api.post('/categories/add', data),
+  updateCategory: (id, data) => api.put('/categories/update', { categoryId: id, updates: data }),
+  deleteCategory: (id) => api.delete('/categories/delete', { data: { categoryId: id } }),
+  
+  // Orders API
   getAllOrders: (params) => api.get('/orders/admin/all', { params }),
+  getOrderById: (id) => api.get(`/orders/${id}`),
+  updateOrderStatus: (id, status) => api.patch(`/orders/${id}/status`, { status }),
+  deleteOrder: (id) => api.delete(`/orders/${id}`),
   
-  // Get all users (admin)
+  // Users API
   getAllUsers: (params) => api.get('/auth/all-users', { params }),
+  getUserById: (id) => api.get(`/auth/users/${id}`),
+  updateUser: (id, data) => api.put('/auth/update-user', { ...data, userId: id }),
+  deleteUser: (id) => api.delete('/auth/delete-user', { data: { userId: id } }),
+  updateUserStatus: (id, data) => api.put('/auth/update-user', { ...data, userId: id }),
   
-  // Get all coupons (admin)
-  getAllCoupons: (params) => api.get('/coupons/admin/all', { params }),
+  // Coupons API
+  getAllCoupons: (params) => api.get('/coupons/all', { params }),
+  getCouponById: (id) => api.get(`/coupons/${id}`),
+  createCoupon: (data) => api.post('/coupons/create', data),
+  updateCoupon: (id, data) => api.put(`/coupons/${id}`, data),
+  deleteCoupon: (id) => api.delete(`/coupons/${id}`),
+  updateCouponStatus: (id, data) => api.patch(`/coupons/${id}/status`, data),
 };
 
 export default api;

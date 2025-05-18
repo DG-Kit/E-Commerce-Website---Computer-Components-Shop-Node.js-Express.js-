@@ -233,7 +233,7 @@ const AdminLayout = () => {
                   color: '#111827'
                 }}
               >
-                Flexy
+                Trang Quản lý
               </Typography>
             </Box>
           </Box>
